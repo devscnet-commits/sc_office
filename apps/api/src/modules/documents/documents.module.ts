@@ -5,6 +5,8 @@ import { DocumentsService } from './services/documents.service';
 import { PdfProcessor } from './services/pdf.processor';
 import { TemplatesModule } from '../templates/templates.module';
 import { EmployeesModule } from '../employees/employees.module';
+import { ComplianceModule } from '../compliance/compliance.module';
+import { CustomFieldsModule } from '../custom-fields/custom-fields.module';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
@@ -12,6 +14,8 @@ import { AuditModule } from '../audit/audit.module';
     BullModule.registerQueue({ name: 'pdf-generation' }),
     TemplatesModule,
     EmployeesModule,
+    ComplianceModule,
+    CustomFieldsModule,
     AuditModule,
   ],
   controllers: [DocumentsController],

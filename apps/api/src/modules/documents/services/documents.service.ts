@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
@@ -10,6 +11,8 @@ import { MinioService } from '../../../infrastructure/minio/minio.service';
 import { TemplateEngineService } from '../../templates/engines/template-engine.service';
 import { EmployeesService } from '../../employees/services/employees.service';
 import { AuditService } from '../../audit/audit.service';
+import { ComplianceService } from '../../compliance/services/compliance.service';
+import { CustomFieldsService } from '../../custom-fields/services/custom-fields.service';
 import { TemplateFormat, DocumentStatus } from '@prisma/client';
 
 export interface GenerateDocumentDto {
@@ -19,6 +22,24 @@ export interface GenerateDocumentDto {
   dossierFolderId?: string;
   additionalVariables?: Record<string, string>;
   notes?: string;
+  /** If true, skips compliance blocking (ADMIN override) */
+  forceGenerate?: boolean;
+}
+
+export interface PreviewDocumentDto {
+  templateId: string;
+  employeeId: string;
+  additionalVariables?: Record<string, string>;
+}
+
+export interface PreviewResult {
+  html: string;
+  variables: Record<string, string>;
+  compliance: {
+    canGenerate: boolean;
+    requirements: any[];
+    blockerCount: number;
+  };
 }
 
 @Injectable()
@@ -29,28 +50,32 @@ export class DocumentsService {
     private readonly engine: TemplateEngineService,
     private readonly employeesService: EmployeesService,
     private readonly audit: AuditService,
+    private readonly compliance: ComplianceService,
+    private readonly customFields: CustomFieldsService,
     @InjectQueue('pdf-generation') private readonly pdfQueue: Queue,
   ) {}
 
-  async generate(dto: GenerateDocumentDto, userId: string) {
-    const [template, employeeVars] = await Promise.all([
-      this.prisma.template.findUnique({
-        where: { id: dto.templateId },
-        include: { fileStorage: true },
-      }),
-      this.employeesService.getVariables(dto.employeeId),
+  // ============================================================
+  // BUILD ALL VARIABLES (employee + company + date + custom + calculated)
+  // ============================================================
+
+  private async buildVariables(
+    employeeId: string,
+    additionalVariables?: Record<string, string>,
+  ): Promise<Record<string, string>> {
+    const [employeeVars, customVars] = await Promise.all([
+      this.employeesService.getVariables(employeeId),
+      this.customFields.buildVariablesMap(employeeId),
     ]);
 
-    if (!template) throw new NotFoundException('Template não encontrado');
-
-    // Get company variables
+    // Company variables
     const company = await this.prisma.company.findFirst();
-    const companyVars = company
+    const companyVars: Record<string, string> = company
       ? {
           'empresa.nome': company.name,
           'empresa.nome_fantasia': company.tradeName || company.name,
           'empresa.cnpj': company.cnpj,
-          'empresa.endereco': `${company.street}, ${company.number}`,
+          'empresa.endereco': `${company.street || ''}, ${company.number || ''}`.trim(),
           'empresa.cidade': company.city || '',
           'empresa.estado': company.state || '',
           'empresa.cep': company.zipCode || '',
@@ -61,41 +86,127 @@ export class DocumentsService {
 
     // Date variables
     const now = new Date();
-    const dateVars = {
+    const dateVars: Record<string, string> = {
       'data.hoje': now.toLocaleDateString('pt-BR'),
       'data.hoje_extenso': now.toLocaleDateString('pt-BR', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       }),
       'data.ano': now.getFullYear().toString(),
       'data.mes': (now.getMonth() + 1).toString().padStart(2, '0'),
       'data.dia': now.getDate().toString().padStart(2, '0'),
     };
 
-    const allVariables = {
-      ...employeeVars,
-      ...companyVars,
-      ...dateVars,
-      ...(dto.additionalVariables || {}),
+    const baseVars = { ...employeeVars, ...companyVars, ...dateVars, ...customVars, ...(additionalVariables || {}) };
+
+    // Computed/calculated fields derived from base vars
+    const calculatedVars = this.engine.computeCalculatedVariables(baseVars);
+
+    return { ...baseVars, ...calculatedVars };
+  }
+
+  // ============================================================
+  // PREVIEW (no persistence, compliance check included)
+  // ============================================================
+
+  async preview(dto: PreviewDocumentDto, userId: string): Promise<PreviewResult> {
+    const template = await this.prisma.template.findUnique({
+      where: { id: dto.templateId },
+      include: { fileStorage: true },
+    });
+    if (!template) throw new NotFoundException('Template não encontrado');
+
+    const [allVariables, complianceCheck] = await Promise.all([
+      this.buildVariables(dto.employeeId, dto.additionalVariables),
+      this.compliance.checkCompliance(dto.templateId, dto.employeeId),
+    ]);
+
+    let html: string;
+
+    if (template.format === TemplateFormat.HTML) {
+      html = this.engine.renderHtml(template.htmlContent!, allVariables);
+    } else {
+      // For DOCX, return a simplified HTML preview with variable substitution shown
+      html = this.buildDocxPreviewHtml(allVariables, template.variables as any[]);
+    }
+
+    await this.audit.log({
+      userId,
+      action: 'PREVIEW_DOCUMENT',
+      module: 'documents',
+      entityType: 'template',
+      entityId: dto.templateId,
+      newValues: { employeeId: dto.employeeId },
+    });
+
+    return {
+      html,
+      variables: allVariables,
+      compliance: {
+        canGenerate: complianceCheck.canGenerate,
+        requirements: complianceCheck.requirements,
+        blockerCount: complianceCheck.blockerCount,
+      },
+    };
+  }
+
+  // ============================================================
+  // GENERATE
+  // ============================================================
+
+  async generate(dto: GenerateDocumentDto, userId: string) {
+    const template = await this.prisma.template.findUnique({
+      where: { id: dto.templateId },
+      include: { fileStorage: true },
+    });
+    if (!template) throw new NotFoundException('Template não encontrado');
+
+    // Compliance check BEFORE generating
+    const complianceCheck = await this.compliance.checkCompliance(
+      dto.templateId,
+      dto.employeeId,
+    );
+
+    if (!complianceCheck.canGenerate && !dto.forceGenerate) {
+      throw new UnprocessableEntityException({
+        message: 'Não é possível gerar o documento: documentos obrigatórios ausentes ou vencidos',
+        compliance: complianceCheck,
+      });
+    }
+
+    const allVariables = await this.buildVariables(dto.employeeId, dto.additionalVariables);
+
+    // Build employee snapshot (frozen at generation time)
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: dto.employeeId },
+      include: {
+        department: { select: { name: true } },
+        position: { select: { title: true } },
+      },
+    });
+    const employeeSnapshot = {
+      id: employee!.id,
+      fullName: employee!.fullName,
+      cpf: employee!.cpf,
+      matricula: employee!.matricula,
+      position: employee!.position.title,
+      department: employee!.department.name,
+      admissionDate: employee!.admissionDate,
+      snapshotAt: new Date().toISOString(),
     };
 
-    // Generate document
+    // Generate document buffer
     let generatedBuffer: Buffer;
     let mimeType: string;
     let extension: string;
 
     if (template.format === TemplateFormat.DOCX) {
       if (!template.fileStorage) {
-        throw new BadRequestException('Template DOCX não possui arquivo associado');
+        throw new BadRequestException('Template DOCX não possui arquivo');
       }
-
       const templateBuffer = await this.minio.getObject(
         template.fileStorage.bucket,
         template.fileStorage.key,
       );
-
       generatedBuffer = await this.engine.renderDocx(templateBuffer, allVariables);
       mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       extension = 'docx';
@@ -106,9 +217,9 @@ export class DocumentsService {
       extension = 'html';
     }
 
-    const docName = dto.name || `${template.name} - ${new Date().toLocaleDateString('pt-BR')}`;
+    const docName = dto.name || `${template.name} - ${employee!.fullName} - ${new Date().toLocaleDateString('pt-BR')}`;
 
-    // Upload generated doc
+    // Upload generated document
     const uploadResult = await this.minio.uploadFile(
       this.minio.getBucketName('documents'),
       generatedBuffer,
@@ -129,13 +240,21 @@ export class DocumentsService {
       },
     });
 
+    // Find the current template version for snapshot reference
+    const currentVersion = await this.prisma.templateVersion.findFirst({
+      where: { templateId: dto.templateId },
+      orderBy: { version: 'desc' },
+    });
+
     const document = await this.prisma.generatedDocument.create({
       data: {
         name: docName,
         templateId: dto.templateId,
+        templateVersionId: currentVersion?.id,
         employeeId: dto.employeeId,
         status: DocumentStatus.GENERATED,
-        variables: allVariables,
+        variables: allVariables as any,
+        employeeSnapshot: employeeSnapshot as any,
         fileStorageId: fileStorage.id,
         dossierFolderId: dto.dossierFolderId,
         createdBy: userId,
@@ -163,15 +282,27 @@ export class DocumentsService {
 
     await this.audit.log({
       userId,
-      action: 'CREATE',
+      action: 'GENERATE_DOCUMENT',
       module: 'documents',
       entityType: 'generated_document',
       entityId: document.id,
-      newValues: { name: docName, employeeId: dto.employeeId },
+      newValues: {
+        name: docName,
+        employeeId: dto.employeeId,
+        templateId: dto.templateId,
+        complianceOverride: dto.forceGenerate,
+      },
     });
 
-    return document;
+    return {
+      ...document,
+      compliance: complianceCheck,
+    };
   }
+
+  // ============================================================
+  // FIND ALL / ONE / DOWNLOAD / SAVE TO DOSSIER
+  // ============================================================
 
   async findAll(filter: {
     employeeId?: string;
@@ -195,6 +326,7 @@ export class DocumentsService {
           template: { select: { id: true, name: true, format: true } },
           employee: { select: { id: true, fullName: true, matricula: true } },
           creator: { select: { id: true, name: true } },
+          pdfStorage: { select: { id: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -202,7 +334,10 @@ export class DocumentsService {
       }),
     ]);
 
-    return { data: documents, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    return {
+      data: documents,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async findOne(id: string) {
@@ -210,6 +345,7 @@ export class DocumentsService {
       where: { id },
       include: {
         template: true,
+        templateVersion: { select: { version: true } },
         employee: { select: { id: true, fullName: true, matricula: true } },
         fileStorage: true,
         pdfStorage: true,
@@ -225,26 +361,57 @@ export class DocumentsService {
     const storage = format === 'pdf' ? doc.pdfStorage : doc.fileStorage;
 
     if (!storage) {
-      if (format === 'pdf') {
-        throw new BadRequestException('PDF ainda não gerado, tente novamente em instantes');
-      }
+      if (format === 'pdf') throw new BadRequestException('PDF ainda não gerado');
       throw new NotFoundException('Arquivo não encontrado');
     }
 
     const buffer = await this.minio.getObject(storage.bucket, storage.key);
-    return {
-      buffer,
-      mimeType: storage.mimeType,
-      filename: storage.originalName,
-    };
+    return { buffer, mimeType: storage.mimeType, filename: storage.originalName };
   }
 
   async saveToDossier(id: string, dossierFolderId: string, userId: string) {
-    const doc = await this.findOne(id);
-
+    await this.findOne(id);
     return this.prisma.generatedDocument.update({
       where: { id },
-      data: { dossierFolderId, status: DocumentStatus.GENERATED },
+      data: { dossierFolderId },
     });
+  }
+
+  // ============================================================
+  // DOCX PREVIEW HTML
+  // ============================================================
+
+  private buildDocxPreviewHtml(
+    variables: Record<string, string>,
+    templateVars: Array<{ path: string; name: string }>,
+  ): string {
+    const rows = templateVars.map((v) => {
+      const value = variables[v.path] || '';
+      const status = value
+        ? `<span style="color:#16a34a">✓</span>`
+        : `<span style="color:#dc2626">✗ não encontrado</span>`;
+      return `<tr>
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-size:13px">{{${v.path}}}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;font-size:13px">${value || '-'}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb">${status}</td>
+      </tr>`;
+    }).join('');
+
+    return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><style>
+  body { font-family: sans-serif; padding: 24px; color: #111; }
+  h2 { color: #1d4ed8; }
+  table { width:100%; border-collapse:collapse; margin-top:16px; }
+  th { background:#f3f4f6; padding:8px 12px; text-align:left; font-size:13px; }
+</style></head>
+<body>
+  <h2>Preview de Variáveis — Template DOCX</h2>
+  <p style="color:#6b7280">O documento DOCX será gerado com as substituições abaixo. Confirme os valores antes de gerar.</p>
+  <table>
+    <thead><tr><th>Variável</th><th>Valor</th><th>Status</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body></html>`;
   }
 }

@@ -18,6 +18,8 @@ import { AuditModule } from './modules/audit/audit.module';
 import { CompanyModule } from './modules/company/company.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { HealthModule } from './modules/health/health.module';
+import { ComplianceModule } from './modules/compliance/compliance.module';
+import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
 import appConfig from './config/app.config';
 import authConfig from './config/auth.config';
 import storageConfig from './config/storage.config';
@@ -68,6 +70,8 @@ import mailConfig from './config/mail.config';
     CompanyModule,
     NotificationsModule,
     HealthModule,
+    ComplianceModule,
+    CustomFieldsModule,
   ],
 })
 export class AppModule {}

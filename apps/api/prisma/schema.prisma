@@ -57,12 +57,18 @@ enum DocumentType {
   CPF
   CTPS
   COMPROVANTE_ENDERECO
+  ASO                    // Atestado de Saúde Ocupacional
+  CNH
   CERTIFICADO
   CONTRATO
   ADVERTENCIA
   FERIAS
   RESCISAO
   TREINAMENTO
+  DIPLOMA
+  RESERVISTA
+  TITULO_ELEITOR
+  FOTO_3X4
   OUTRO
 }
 
@@ -85,6 +91,27 @@ enum DocumentStatus {
   DELETED
 }
 
+enum ValidityStatus {
+  VALID
+  EXPIRING_SOON   // <= 30 days
+  CRITICAL        // <= 7 days
+  EXPIRED
+  NOT_APPLICABLE  // sem data de validade
+}
+
+enum AlertType {
+  DOCUMENT_EXPIRING
+  DOCUMENT_EXPIRED
+  COMPLIANCE_INCOMPLETE
+  DOCUMENT_PENDING
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -96,11 +123,21 @@ enum AuditAction {
   IMPORT
   PASSWORD_CHANGE
   PASSWORD_RESET
+  GENERATE_DOCUMENT
+  PREVIEW_DOCUMENT
 }
 
 enum FolderType {
   SYSTEM
   USER
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  SELECT
+  BOOLEAN
 }
 
 // ============================================================
@@ -318,6 +355,9 @@ model Employee {
   employeeDocuments   EmployeeDocument[]
   generatedDocuments  GeneratedDocument[]
   dossierFolders      DossierFolder[]
+  documentValidity    DocumentValidity[]
+  customFieldValues   CustomFieldValue[]
+  alerts              Alert[]
 
   @@index([cpf])
   @@index([matricula])
@@ -348,8 +388,9 @@ model EmployeeDocument {
   updatedAt DateTime @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  fileStorage FileStorage @relation(fields: [fileStorageId], references: [id])
+  employee         Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  fileStorage      FileStorage        @relation(fields: [fileStorageId], references: [id])
+  documentValidity DocumentValidity[]
 
   @@index([employeeId])
   @@index([type])
@@ -382,6 +423,7 @@ model Template {
   fileStorage        FileStorage?         @relation(fields: [fileStorageId], references: [id])
   generatedDocuments GeneratedDocument[]
   templateVersions   TemplateVersion[]
+  requirements       TemplateRequirement[]
 
   @@index([name])
   @@index([category])
@@ -401,8 +443,9 @@ model TemplateVersion {
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  template    Template     @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  fileStorage FileStorage? @relation(fields: [fileStorageId], references: [id])
+  template           Template            @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  fileStorage        FileStorage?        @relation(fields: [fileStorageId], references: [id])
+  generatedDocuments GeneratedDocument[]
 
   @@unique([templateId, version])
   @@index([templateId])
@@ -414,28 +457,31 @@ model TemplateVersion {
 // ============================================================
 
 model GeneratedDocument {
-  id           String         @id @default(cuid())
-  name         String         @db.VarChar(255)
-  templateId   String         @map("template_id")
-  employeeId   String         @map("employee_id")
-  status       DocumentStatus @default(DRAFT)
-  variables    Json           @default("{}")
-  fileStorageId String?       @map("file_storage_id")
-  pdfStorageId  String?       @map("pdf_storage_id")
-  dossierFolderId String?     @map("dossier_folder_id")
-  createdBy    String         @map("created_by")
-  notes        String?        @db.VarChar(500)
+  id                String         @id @default(cuid())
+  name              String         @db.VarChar(255)
+  templateId        String         @map("template_id")
+  templateVersionId String?        @map("template_version_id")  // Snapshot da versão exata
+  employeeId        String         @map("employee_id")
+  status            DocumentStatus @default(DRAFT)
+  variables         Json           @default("{}")               // Snapshot completo dos dados
+  employeeSnapshot  Json           @default("{}") @map("employee_snapshot") // Dados do funcionário no momento
+  fileStorageId     String?        @map("file_storage_id")
+  pdfStorageId      String?        @map("pdf_storage_id")
+  dossierFolderId   String?        @map("dossier_folder_id")
+  createdBy         String         @map("created_by")
+  notes             String?        @db.VarChar(500)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  template      Template       @relation(fields: [templateId], references: [id])
-  employee      Employee       @relation(fields: [employeeId], references: [id])
-  creator       User           @relation("DocumentCreator", fields: [createdBy], references: [id])
-  fileStorage   FileStorage?   @relation("DocumentFile", fields: [fileStorageId], references: [id])
-  pdfStorage    FileStorage?   @relation("DocumentPdf", fields: [pdfStorageId], references: [id])
-  dossierFolder DossierFolder? @relation(fields: [dossierFolderId], references: [id])
+  template        Template         @relation(fields: [templateId], references: [id])
+  templateVersion TemplateVersion? @relation(fields: [templateVersionId], references: [id])
+  employee        Employee         @relation(fields: [employeeId], references: [id])
+  creator         User             @relation("DocumentCreator", fields: [createdBy], references: [id])
+  fileStorage     FileStorage?     @relation("DocumentFile", fields: [fileStorageId], references: [id])
+  pdfStorage      FileStorage?     @relation("DocumentPdf", fields: [pdfStorageId], references: [id])
+  dossierFolder   DossierFolder?   @relation(fields: [dossierFolderId], references: [id])
 
   @@index([templateId])
   @@index([employeeId])
@@ -602,18 +648,149 @@ model SystemConfig {
 // ============================================================
 
 model Notification {
-  id        String  @id @default(cuid())
-  userId    String  @map("user_id")
-  title     String  @db.VarChar(255)
-  message   String  @db.VarChar(1000)
-  type      String  @db.VarChar(50)
-  read      Boolean @default(false)
-  readAt    DateTime? @map("read_at")
-  metadata  Json    @default("{}")
+  id         String  @id @default(cuid())
+  userId     String  @map("user_id")
+  title      String  @db.VarChar(255)
+  message    String  @db.VarChar(1000)
+  type       String  @db.VarChar(50)
+  read       Boolean @default(false)
+  readAt     DateTime? @map("read_at")
+  metadata   Json    @default("{}")
+  employeeId String? @map("employee_id")
 
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([read])
+  @@index([employeeId])
   @@map("notifications")
 }
+
+// ============================================================
+// COMPLIANCE — REQUISITOS DE TEMPLATE
+// ============================================================
+
+model TemplateRequirement {
+  id           String       @id @default(cuid())
+  templateId   String       @map("template_id")
+  documentType DocumentType
+  label        String       @db.VarChar(100) // "Carteira de Trabalho"
+  description  String?      @db.VarChar(300)
+  required     Boolean      @default(true)
+  blockGeneration Boolean   @default(true) @map("block_generation")
+  order        Int          @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  template Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, documentType])
+  @@index([templateId])
+  @@map("template_requirements")
+}
+
+// ============================================================
+// COMPLIANCE — VALIDADE DE DOCUMENTOS
+// ============================================================
+
+model DocumentValidity {
+  id                String         @id @default(cuid())
+  employeeId        String         @map("employee_id")
+  employeeDocumentId String?       @map("employee_document_id")
+  documentType      DocumentType   @map("document_type")
+  issueDate         DateTime?      @map("issue_date") @db.Date
+  expirationDate    DateTime?      @map("expiration_date") @db.Date
+  status            ValidityStatus @default(NOT_APPLICABLE)
+  notifiedAt        DateTime?      @map("notified_at")
+  notes             String?        @db.VarChar(300)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  employee         Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeDocument EmployeeDocument? @relation(fields: [employeeDocumentId], references: [id])
+
+  @@unique([employeeId, documentType])
+  @@index([employeeId])
+  @@index([status])
+  @@index([expirationDate])
+  @@map("document_validity")
+}
+
+// ============================================================
+// COMPLIANCE — ALERTAS AUTOMÁTICOS
+// ============================================================
+
+model Alert {
+  id          String        @id @default(cuid())
+  type        AlertType
+  severity    AlertSeverity @default(WARNING)
+  employeeId  String?       @map("employee_id")
+  documentType DocumentType? @map("document_type")
+  title       String        @db.VarChar(255)
+  message     String        @db.VarChar(500)
+  metadata    Json          @default("{}")
+  resolved    Boolean       @default(false)
+  resolvedAt  DateTime?     @map("resolved_at")
+  resolvedBy  String?       @map("resolved_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  employee Employee? @relation(fields: [employeeId], references: [id])
+
+  @@index([type])
+  @@index([severity])
+  @@index([employeeId])
+  @@index([resolved])
+  @@map("alerts")
+}
+
+// ============================================================
+// CAMPOS CUSTOMIZADOS DO FUNCIONÁRIO
+// ============================================================
+
+model CustomField {
+  id           String          @id @default(cuid())
+  name         String          @unique @db.VarChar(100) // slug: numero_calcado
+  label        String          @db.VarChar(150)         // "Número do Calçado"
+  type         CustomFieldType @default(TEXT)
+  options      Json?                                    // para SELECT: ["P","M","G","GG"]
+  required     Boolean         @default(false)
+  active       Boolean         @default(true)
+  order        Int             @default(0)
+  description  String?         @db.VarChar(300)
+  templateVar  String          @map("template_var") @db.VarChar(150) // "custom.numero_calcado"
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  values CustomFieldValue[]
+
+  @@index([active])
+  @@map("custom_fields")
+}
+
+model CustomFieldValue {
+  id            String @id @default(cuid())
+  employeeId    String @map("employee_id")
+  customFieldId String @map("custom_field_id")
+  value         String @db.VarChar(500)
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  customField CustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, customFieldId])
+  @@index([employeeId])
+  @@map("custom_field_values")
+}
+
+// ============================================================
+// SNAPSHOT — salvo em GeneratedDocument.variables (já existe)
+// Índice auxiliar para buscas por snapshot
+// ============================================================
+// GeneratedDocument.variables já persiste o snapshot completo
+// GeneratedDocument.templateVersionId agora referencia a versão exata

@@ -2,9 +2,9 @@ import {
   Controller, Get, Post, Body, Param, Query, Res, UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { DocumentStatus } from '@prisma/client';
-import { DocumentsService, GenerateDocumentDto } from '../services/documents.service';
+import { DocumentsService, GenerateDocumentDto, PreviewDocumentDto } from '../services/documents.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { CurrentUser } from '../../../shared/decorators/current-user.decorator';
@@ -16,14 +16,29 @@ import { CurrentUser } from '../../../shared/decorators/current-user.decorator';
 export class DocumentsController {
   constructor(private readonly service: DocumentsService) {}
 
+  @Post('preview')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Preview do documento antes de gerar',
+    description: 'Renderiza o template com os dados do funcionário sem salvar. Retorna HTML + compliance check.',
+  })
+  preview(@Body() dto: PreviewDocumentDto, @CurrentUser('id') userId: string) {
+    return this.service.preview(dto, userId);
+  }
+
   @Post('generate')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Gerar documento a partir de template + funcionário' })
+  @ApiOperation({
+    summary: 'Gerar documento (valida compliance antes)',
+    description: 'Executa compliance check. Bloqueia se documentos obrigatórios estiverem ausentes/vencidos.',
+  })
+  @ApiResponse({ status: 422, description: 'Compliance bloqueado — documentos obrigatórios ausentes' })
   generate(@Body() dto: GenerateDocumentDto, @CurrentUser('id') userId: string) {
     return this.service.generate(dto, userId);
   }
 
   @Get()
+  @ApiOperation({ summary: 'Listar documentos gerados' })
   findAll(
     @Query('employeeId') employeeId?: string,
     @Query('templateId') templateId?: string,
@@ -35,7 +50,9 @@ export class DocumentsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) { return this.service.findOne(id); }
+  findOne(@Param('id') id: string) {
+    return this.service.findOne(id);
+  }
 
   @Get(':id/download')
   @ApiOperation({ summary: 'Download do documento (PDF ou source)' })
@@ -54,6 +71,7 @@ export class DocumentsController {
   }
 
   @Post(':id/save-to-dossier')
+  @ApiOperation({ summary: 'Mover documento para pasta do dossiê do funcionário' })
   saveToDossier(
     @Param('id') id: string,
     @Body('dossierFolderId') dossierFolderId: string,
