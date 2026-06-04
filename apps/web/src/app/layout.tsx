@@ -7,8 +7,8 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: { template: '%s | SC Office', default: 'SC Office' },
-  description: 'Sistema de gestão de RH e documentação corporativa',
+  title: { template: '%s | SCNET Office', default: 'SCNET Office' },
+  description: 'Sistema de gestão de RH e documentação corporativa — SCNET Internet de Fibra',
   robots: { index: false, follow: false },
 };
 

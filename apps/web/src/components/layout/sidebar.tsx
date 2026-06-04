@@ -89,14 +89,15 @@ export function Sidebar() {
 
   return (
     <aside className="w-64 border-r bg-card flex flex-col h-full shrink-0">
-      <div className="p-6 border-b">
+      <div className="p-5 border-b bg-primary">
         <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-            SC
+          <div className="flex items-center justify-center rounded-lg bg-white px-2 py-1">
+            <span className="text-primary font-black text-sm tracking-tight leading-none">SC</span>
+            <span className="text-primary font-black text-sm tracking-tight leading-none">NET</span>
           </div>
           <div>
-            <p className="font-semibold text-sm">SC Office</p>
-            <p className="text-xs text-muted-foreground">Gestão de RH</p>
+            <p className="font-semibold text-sm text-white">SC Office</p>
+            <p className="text-xs text-blue-200">Gestão de RH</p>
           </div>
         </Link>
       </div>
@@ -129,7 +130,7 @@ export function Sidebar() {
 
       <div className="p-4 border-t">
         <p className="text-xs text-muted-foreground text-center">
-          SC Office v1.0.0
+          SCNET Office v1.0.0
         </p>
       </div>
     </aside>

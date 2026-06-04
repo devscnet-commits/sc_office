@@ -37,12 +37,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800 p-4">
-      <Card className="w-full max-w-md shadow-xl">
-        <CardHeader className="space-y-1 text-center">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary to-blue-900 p-4">
+      <Card className="w-full max-w-md shadow-2xl border-0">
+        <CardHeader className="space-y-1 text-center pb-6">
           <div className="flex justify-center mb-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-xl">
-              SC
+            <div className="flex items-center justify-center rounded-xl bg-primary px-4 py-2">
+              <span className="text-white font-black text-2xl tracking-tight">SC</span>
+              <span className="text-white font-black text-2xl tracking-tight">NET</span>
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">SC Office</CardTitle>
