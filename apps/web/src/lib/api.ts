@@ -82,3 +82,6 @@ api.interceptors.response.use(
     return Promise.reject(error.response?.data || error);
   },
 );
+
+export const uploadFile = (url: string, formData: FormData) =>
+  api.post(url, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
