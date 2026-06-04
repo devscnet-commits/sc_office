@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Users, FileText, FilePlus, FolderOpen, Building2,
   LayoutDashboard, Settings, Shield, BarChart3,
-  ChevronRight, Briefcase, ShieldCheck
+  ChevronRight, Briefcase, ShieldCheck, GitBranch,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { usePermissions } from '../../stores/auth.store';
@@ -52,6 +52,12 @@ const navItems = [
     href: '/dashboard/compliance',
     icon: ShieldCheck,
     roles: ['ADMIN', 'RH'],
+  },
+  {
+    title: 'Organograma',
+    href: '/dashboard/organograma',
+    icon: GitBranch,
+    roles: ['ADMIN', 'RH', 'GESTOR', 'CONSULTA'],
   },
   {
     title: 'Empresa',

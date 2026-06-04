@@ -246,6 +246,15 @@ export class DocumentsService {
       orderBy: { version: 'desc' },
     });
 
+    // Auto-resolve dossier folder: use provided or find "Contratos" system folder
+    let resolvedDossierFolderId = dto.dossierFolderId;
+    if (!resolvedDossierFolderId) {
+      const contratosFolder = await this.prisma.dossierFolder.findFirst({
+        where: { employeeId: dto.employeeId, name: 'Contratos', isSystem: true },
+      });
+      resolvedDossierFolderId = contratosFolder?.id;
+    }
+
     const document = await this.prisma.generatedDocument.create({
       data: {
         name: docName,
@@ -256,7 +265,7 @@ export class DocumentsService {
         variables: allVariables as any,
         employeeSnapshot: employeeSnapshot as any,
         fileStorageId: fileStorage.id,
-        dossierFolderId: dto.dossierFolderId,
+        dossierFolderId: resolvedDossierFolderId,
         createdBy: userId,
         notes: dto.notes,
       },
