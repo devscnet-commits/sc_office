@@ -98,6 +98,7 @@ export function Sidebar() {
           <div>
             <p className="font-semibold text-sm text-white">SC Office</p>
             <p className="text-xs text-blue-200">Gestão de RH</p>
+
           </div>
         </Link>
       </div>
@@ -130,7 +131,7 @@ export function Sidebar() {
 
       <div className="p-4 border-t">
         <p className="text-xs text-muted-foreground text-center">
-          SCNET Office v1.0.0
+          SC Office v1.0.0
         </p>
       </div>
     </aside>

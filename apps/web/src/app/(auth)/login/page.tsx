@@ -47,6 +47,7 @@ export default function LoginPage() {
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">SC Office</CardTitle>
+
           <CardDescription>
             Sistema de Gestão de RH e Documentação
           </CardDescription>
