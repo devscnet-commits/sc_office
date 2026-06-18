@@ -1,0 +1,27 @@
+# ============================================================
+# SC_OFFICE — Reverse proxy (porteiro de entrada)
+# ------------------------------------------------------------
+# Tudo entra por aqui. As requisicoes que comecam com /api vao
+# para a API (NestJS, porta 3001). O resto vai para o site
+# (Next.js, porta 3000).
+#
+# {$SITE_ADDRESS} vem do arquivo .env:
+#   - Local  : SITE_ADDRESS=:80                 -> http://localhost
+#   - Servidor: SITE_ADDRESS=escritorio.scnet.com.br
+#     (com um dominio real o Caddy gera o certificado HTTPS sozinho)
+# ============================================================
+
+{$SITE_ADDRESS} {
+	encode gzip
+
+	# /api e /api/... -> backend (mantem o caminho completo, NAO remove o /api)
+	@api path /api /api/*
+	handle @api {
+		reverse_proxy api:3001
+	}
+
+	# todo o resto -> frontend
+	handle {
+		reverse_proxy web:3000
+	}
+}
