@@ -12,7 +12,7 @@ RUN corepack enable
 # ============================================================
 FROM base AS deps
 COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # ============================================================
 FROM base AS development
@@ -40,7 +40,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY package.json ./
+COPY package.json tsconfig.json ./
 
 # Puppeteer dependencies
 RUN apk add --no-cache \

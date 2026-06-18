@@ -1,0 +1,12 @@
+# Evita copiar artefatos da maquina host para dentro da imagem.
+# (o node_modules correto e instalado dentro do container)
+node_modules
+.next
+out
+coverage
+.turbo
+.env
+.env.*
+*.log
+Dockerfile
+.dockerignore

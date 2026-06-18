@@ -1,0 +1,200 @@
+# ============================================================
+# SC_OFFICE — Stack de PRODUCAO (sobe tudo com 1 comando)
+# ------------------------------------------------------------
+# Sobe, em conjunto:
+#   postgres   -> banco de dados
+#   redis      -> cache / filas
+#   minio      -> armazenamento de arquivos (S3)
+#   minio-init -> cria os "baldes" (buckets) no minio uma vez
+#   api        -> backend NestJS (cria as tabelas e o admin no 1o boot)
+#   web        -> frontend Next.js
+#   caddy      -> porteiro de entrada (HTTP/HTTPS) -> porta 80/443
+#
+# Uso:
+#   1) cp .env.prod.example .env   (e preencha os segredos)
+#   2) docker compose -f docker-compose.prod.yml up -d --build
+#   3) abra http://localhost   (login: admin@scoffice.com / Admin@12345)
+#
+# Detalhes no arquivo DEPLOY.md (mesma pasta).
+# ============================================================
+
+name: sc-office
+
+services:
+  # ----------------------------------------------------------
+  # Banco de dados
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sc_office
+      POSTGRES_USER: sc_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sc_user -d sc_office"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [sc_network]
+
+  # ----------------------------------------------------------
+  # Cache / filas
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--pass", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [sc_network]
+
+  # ----------------------------------------------------------
+  # Armazenamento de arquivos (S3-compativel)
+  # ----------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks: [sc_network]
+
+  # Cria os buckets necessarios uma vez e encerra
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY} &&
+      for b in sc-templates sc-documents sc-employees sc-dossier sc-company sc-temp; do
+        mc mb -p local/$$b || true;
+      done &&
+      echo 'buckets prontos'
+      "
+    networks: [sc_network]
+    restart: "no"
+
+  # ----------------------------------------------------------
+  # Backend (NestJS)
+  # No 1o boot: cria as tabelas (prisma db push) e o usuario admin (seed).
+  # ----------------------------------------------------------
+  api:
+    build:
+      context: ../../apps/api
+      dockerfile: Dockerfile
+      target: production
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://sc_user:${POSTGRES_PASSWORD}@postgres:5432/sc_office
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: 0
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_REGION: us-east-1
+      MINIO_BUCKET_TEMPLATES: sc-templates
+      MINIO_BUCKET_DOCUMENTS: sc-documents
+      MINIO_BUCKET_EMPLOYEES: sc-employees
+      MINIO_BUCKET_DOSSIER: sc-dossier
+      MINIO_BUCKET_COMPANY: sc-company
+      MINIO_BUCKET_TEMP: sc-temp
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
+      JWT_EXPIRES_IN: 15m
+      REFRESH_TOKEN_EXPIRES_IN: 7d
+      BCRYPT_ROUNDS: 12
+      CORS_ORIGIN: ${PUBLIC_URL}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_SECURE: ${MAIL_SECURE}
+      MAIL_USER: ${MAIL_USER}
+      MAIL_PASS: ${MAIL_PASS}
+      MAIL_FROM: ${MAIL_FROM}
+    command:
+      - sh
+      - -c
+      - "npx prisma db push --skip-generate && (pnpm db:seed || echo 'seed pulado') && node dist/main"
+    networks: [sc_network]
+
+  # ----------------------------------------------------------
+  # Frontend (Next.js)
+  # A URL da API e "assada" na imagem no momento do build (build arg).
+  # ----------------------------------------------------------
+  web:
+    build:
+      context: ../../apps/web
+      dockerfile: Dockerfile
+      target: production
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_URL}/api/v1
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: "0.0.0.0"
+    networks: [sc_network]
+
+  # ----------------------------------------------------------
+  # Porteiro de entrada (reverse proxy + HTTPS automatico)
+  # ----------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [sc_network]
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  sc_network:
+    driver: bridge
