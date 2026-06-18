@@ -21,7 +21,7 @@ export class MinioService implements OnModuleInit {
 
   async onModuleInit() {
     const config = this.configService.get('storage.minio');
-    this.buckets = this.configService.get('storage.buckets');
+    this.buckets = this.configService.get('storage.buckets')!;
 
     this.client = new Minio.Client({
       endPoint: config.endPoint,

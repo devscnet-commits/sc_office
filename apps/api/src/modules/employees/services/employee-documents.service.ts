@@ -50,11 +50,14 @@ export class EmployeeDocumentsService {
     const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
     if (!employee) throw new NotFoundException('Funcionário não encontrado');
 
-    const key = `${employeeId}/docs/${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`;
-    const { key: storedKey, checksum } = await this.minio.uploadFile(BUCKET, key, file.buffer, file.mimetype, {
-      employeeId,
-      type,
-    });
+    const folder = `${employeeId}/docs`;
+    const { key: storedKey, etag: checksum } = await this.minio.uploadFile(
+      BUCKET,
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+      folder,
+    );
 
     const fileStorage = await this.prisma.fileStorage.create({
       data: {
