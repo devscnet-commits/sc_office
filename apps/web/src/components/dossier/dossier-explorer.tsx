@@ -14,7 +14,24 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import { Card, CardContent } from '../ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { usePermissions } from '../../stores/auth.store';
+
+const DOC_TYPE_OPTIONS = [
+  { v: 'OUTRO', l: 'Outro' },
+  { v: 'ASO', l: 'ASO (exame ocupacional)' },
+  { v: 'CNH', l: 'CNH' },
+  { v: 'CERTIFICADO', l: 'Certificado' },
+  { v: 'TREINAMENTO', l: 'Treinamento (NR)' },
+  { v: 'CONTRATO', l: 'Contrato' },
+  { v: 'RG', l: 'RG' },
+  { v: 'CPF', l: 'CPF' },
+  { v: 'CTPS', l: 'CTPS' },
+  { v: 'COMPROVANTE_ENDERECO', l: 'Comprovante de endereço' },
+  { v: 'ADVERTENCIA', l: 'Advertência' },
+  { v: 'FERIAS', l: 'Férias' },
+  { v: 'RESCISAO', l: 'Rescisão' },
+];
 
 interface DossierFolder {
   id: string;
@@ -45,6 +62,8 @@ export function DossierExplorer({ employeeId }: Props) {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadTargetId, setUploadTargetId] = useState<string>('');
+  const [uploadType, setUploadType] = useState('OUTRO');
+  const [uploadExpiresAt, setUploadExpiresAt] = useState('');
 
   const { data: treeData } = useQuery({
     queryKey: ['dossier-tree', employeeId],
@@ -93,12 +112,13 @@ export function DossierExplorer({ employeeId }: Props) {
       if (!uploadFile) throw new Error('Selecione um arquivo');
       const fd = new FormData();
       fd.append('file', uploadFile);
-      fd.append('type', 'OUTRO');
+      fd.append('type', uploadType);
+      if (uploadExpiresAt) fd.append('expiresAt', uploadExpiresAt);
       return api.post(`/dossier/folders/${uploadTargetId}/upload`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
     },
-    onSuccess: () => { toast.success('Arquivo enviado'); setUploadOpen(false); setUploadFile(null); invalidate(); },
+    onSuccess: () => { toast.success('Arquivo enviado'); setUploadOpen(false); setUploadFile(null); setUploadExpiresAt(''); setUploadType('OUTRO'); invalidate(); },
     onError: (e: any) => toast.error(e?.message || 'Erro ao enviar'),
   });
 
@@ -332,6 +352,24 @@ export function DossierExplorer({ employeeId }: Props) {
             className="hidden"
             onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
           />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Tipo</label>
+              <Select value={uploadType} onValueChange={setUploadType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DOC_TYPE_OPTIONS.map((o) => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Data de validade (opcional)</label>
+              <Input type="date" value={uploadExpiresAt} onChange={(e) => setUploadExpiresAt(e.target.value)} />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Preencha a <strong>validade</strong> para o documento ser monitorado no <strong>Compliance</strong> (alertas de vencimento).
+          </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setUploadOpen(false)}>Cancelar</Button>
             <Button onClick={() => uploadMutation.mutate()} disabled={!uploadFile || uploadMutation.isPending}>
