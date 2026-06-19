@@ -28,6 +28,7 @@ export function GenerateDocumentClient() {
   const router = useRouter();
   const [templateId, setTemplateId] = useState('');
   const [employeeId, setEmployeeId] = useState('');
+  const [dossierFolderId, setDossierFolderId] = useState('');
   const [preview, setPreview] = useState<Preview | null>(null);
 
   const { data: tplData } = useQuery({ queryKey: ['templates'], queryFn: () => api.get('/templates') as any });
@@ -35,6 +36,21 @@ export function GenerateDocumentClient() {
 
   const { data: empData } = useQuery({ queryKey: ['employees'], queryFn: () => api.get('/employees?limit=500') as any });
   const employees = unwrap(empData);
+
+  // Pastas do dossiê do funcionário selecionado (para escolher onde salvar)
+  const { data: folderData } = useQuery({
+    queryKey: ['dossier-tree', employeeId],
+    queryFn: () => api.get(`/employees/${employeeId}/dossier`) as any,
+    enabled: !!employeeId,
+  });
+  const flattenFolders = (nodes: any[], acc: any[] = []): any[] => {
+    for (const n of nodes ?? []) {
+      acc.push(n);
+      if (n.children?.length) flattenFolders(n.children, acc);
+    }
+    return acc;
+  };
+  const folders = flattenFolders(folderData?.data ?? []);
 
   const previewMutation = useMutation({
     mutationFn: () => api.post('/documents/preview', { templateId, employeeId }) as any,
@@ -44,7 +60,12 @@ export function GenerateDocumentClient() {
 
   const generateMutation = useMutation({
     mutationFn: (force: boolean) =>
-      api.post('/documents/generate', { templateId, employeeId, forceGenerate: force }),
+      api.post('/documents/generate', {
+        templateId,
+        employeeId,
+        forceGenerate: force,
+        dossierFolderId: dossierFolderId || undefined,
+      }),
     onSuccess: () => { toast.success('Documento gerado com sucesso'); router.push('/documents'); },
     onError: (e: any) => toast.error(e?.message || 'Erro ao gerar documento'),
   });
@@ -73,7 +94,7 @@ export function GenerateDocumentClient() {
           </div>
           <div className="space-y-2">
             <Label>Funcionário</Label>
-            <Select value={employeeId} onValueChange={(v) => { setEmployeeId(v); setPreview(null); }}>
+            <Select value={employeeId} onValueChange={(v) => { setEmployeeId(v); setDossierFolderId(''); setPreview(null); }}>
               <SelectTrigger><SelectValue placeholder="Selecione um funcionário" /></SelectTrigger>
               <SelectContent>
                 {employees.map((e) => (
@@ -81,6 +102,18 @@ export function GenerateDocumentClient() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Pasta no dossiê (onde salvar)</Label>
+            <Select value={dossierFolderId} onValueChange={setDossierFolderId} disabled={!employeeId}>
+              <SelectTrigger><SelectValue placeholder={employeeId ? 'Contratos (padrão)' : 'Escolha o funcionário primeiro'} /></SelectTrigger>
+              <SelectContent>
+                {folders.map((f) => (
+                  <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Se não escolher, o documento vai para a pasta <strong>Contratos</strong>.</p>
           </div>
           <div className="md:col-span-2">
             <Button variant="outline" disabled={!ready || previewMutation.isPending} onClick={() => previewMutation.mutate()}>
