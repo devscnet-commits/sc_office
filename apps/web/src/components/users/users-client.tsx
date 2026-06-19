@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import {
   Plus, UserX, UserCheck, KeyRound, Pencil,
-  ShieldCheck, Users, Eye, EyeOff,
+  ShieldCheck, Users, Eye, EyeOff, Check, Minus,
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { Button } from '../ui/button';
@@ -43,6 +43,29 @@ const ROLE_COLORS: Record<string, string> = {
   GESTOR: 'bg-purple-100 text-purple-800',
   CONSULTA: 'bg-gray-100 text-gray-800',
 };
+
+// Resumo do que cada papel pode fazer — reflete as permissões reais do sistema.
+// (As permissões são definidas no código; esta tabela é uma referência para consulta.)
+const PERMISSION_MATRIX: { area: string; admin: boolean; rh: boolean; gestor: boolean; consulta: boolean }[] = [
+  { area: 'Visualizar dados (funcionários, templates, documentos, dossiês, compliance)', admin: true, rh: true, gestor: true, consulta: true },
+  { area: 'Gerar documentos a partir de templates', admin: true, rh: true, gestor: true, consulta: true },
+  { area: 'Cadastrar e editar funcionários', admin: true, rh: true, gestor: false, consulta: false },
+  { area: 'Anexar, verificar e excluir documentos do funcionário', admin: true, rh: true, gestor: false, consulta: false },
+  { area: 'Registrar validades e requisitos (Compliance)', admin: true, rh: true, gestor: false, consulta: false },
+  { area: 'Criar, editar e excluir templates', admin: true, rh: true, gestor: false, consulta: false },
+  { area: 'Criar e editar departamentos', admin: true, rh: true, gestor: false, consulta: false },
+  { area: 'Excluir funcionários e departamentos', admin: true, rh: false, gestor: false, consulta: false },
+  { area: 'Gerenciar usuários e papéis', admin: true, rh: false, gestor: false, consulta: false },
+  { area: 'Ver logs de auditoria', admin: true, rh: false, gestor: false, consulta: false },
+];
+
+function PermCell({ allowed }: { allowed: boolean }) {
+  return allowed ? (
+    <Check className="h-4 w-4 text-green-600 mx-auto" />
+  ) : (
+    <Minus className="h-4 w-4 text-muted-foreground/40 mx-auto" />
+  );
+}
 
 interface User {
   id: string;
@@ -158,6 +181,51 @@ export function UsersClient() {
           </Card>
         ))}
       </div>
+
+      {/* Papéis e Permissões */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4" />
+            O que cada papel pode fazer
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Ao criar um usuário, escolha o papel conforme o que ele precisa fazer. As permissões
+            abaixo são fixas (definidas no sistema) — esta tabela serve de referência.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[260px]">Permissão</TableHead>
+                  <TableHead className="text-center">Administrador</TableHead>
+                  <TableHead className="text-center">RH</TableHead>
+                  <TableHead className="text-center">Gestor</TableHead>
+                  <TableHead className="text-center">Consulta</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {PERMISSION_MATRIX.map((row) => (
+                  <TableRow key={row.area}>
+                    <TableCell className="text-sm">{row.area}</TableCell>
+                    <TableCell><PermCell allowed={row.admin} /></TableCell>
+                    <TableCell><PermCell allowed={row.rh} /></TableCell>
+                    <TableCell><PermCell allowed={row.gestor} /></TableCell>
+                    <TableCell><PermCell allowed={row.consulta} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="mt-4 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+            <p><span className="font-medium text-foreground">Administrador:</span> acesso total, incluindo usuários e auditoria.</p>
+            <p><span className="font-medium text-foreground">RH:</span> opera o dia a dia (funcionários, documentos, templates, compliance), mas não gerencia usuários.</p>
+            <p><span className="font-medium text-foreground">Gestor e Consulta:</span> hoje têm o mesmo acesso — apenas visualizar e gerar documentos. Se quiser dar mais poderes ao Gestor (ex.: editar funcionários da equipe), me avise que eu ajusto.</p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Table */}
       <Card>
