@@ -55,4 +55,6 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 USER nestjs
 EXPOSE 3001
-CMD ["node", "dist/main"]
+# No boot: aplica o schema no banco (cria/atualiza tabelas), roda o seed
+# (admin) de forma tolerante, e sobe a API. Idempotente — seguro a cada start.
+CMD ["sh", "-c", "node_modules/.bin/prisma db push --skip-generate && (node_modules/.bin/ts-node --transpile-only prisma/seed.ts || echo 'seed pulado') && node dist/main"]
