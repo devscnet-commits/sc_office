@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, FileText, Trash2, Variable } from 'lucide-react';
@@ -50,6 +50,23 @@ export function TemplatesClient() {
     queryFn: () => api.get('/templates/variables') as any,
   });
   const variables: any[] = varsData?.data?.data ?? varsData?.data ?? [];
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const varPath = (v: any) =>
+    typeof v === 'string' ? v.replace(/[{}]/g, '') : String(v.path ?? v.name ?? '').replace(/[{}]/g, '');
+  const insertVariable = (v: any) => {
+    const token = `{{${varPath(v)}}}`;
+    const el = textareaRef.current;
+    if (!el) { setHtmlContent((c) => c + token); return; }
+    const start = el.selectionStart ?? htmlContent.length;
+    const end = el.selectionEnd ?? htmlContent.length;
+    setHtmlContent(htmlContent.slice(0, start) + token + htmlContent.slice(end));
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + token.length;
+      el.setSelectionRange(pos, pos);
+    });
+  };
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['templates'] });
 
@@ -155,7 +172,7 @@ export function TemplatesClient() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl">
           <DialogHeader><DialogTitle>Novo Template</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -179,15 +196,36 @@ export function TemplatesClient() {
               </Select>
             </div>
             {format === 'HTML' ? (
-              <div className="space-y-2">
-                <Label>Conteúdo</Label>
-                <textarea
-                  value={htmlContent}
-                  onChange={(e) => setHtmlContent(e.target.value)}
-                  rows={10}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder={'<h1>Declaração</h1>\n<p>Declaramos que {{funcionario.nome}}, matrícula {{funcionario.matricula}}...</p>'}
-                />
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_240px] gap-4">
+                <div className="space-y-2">
+                  <Label>Conteúdo</Label>
+                  <textarea
+                    ref={textareaRef}
+                    value={htmlContent}
+                    onChange={(e) => setHtmlContent(e.target.value)}
+                    rows={14}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    placeholder={'<h1>Declaração</h1>\n<p>Declaramos que {{funcionario.nome}}, matrícula {{funcionario.matricula}}...</p>'}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1"><Variable className="h-3.5 w-3.5" /> Inserir variável</Label>
+                  <p className="text-[11px] text-muted-foreground">Clique para inserir no texto (na posição do cursor).</p>
+                  <div className="flex flex-wrap gap-1.5 max-h-[300px] overflow-y-auto rounded-md border p-2">
+                    {variables.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
+                    {variables.map((v, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => insertVariable(v)}
+                        className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] hover:bg-primary hover:text-primary-foreground transition-colors"
+                        title="Inserir"
+                      >
+                        {`{{${varPath(v)}}}`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">

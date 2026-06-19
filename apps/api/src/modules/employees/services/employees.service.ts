@@ -267,6 +267,22 @@ export class EmployeesService {
       'funcionario.pix': employee.bankPix || '',
       'funcionario.pis': employee.pis || '',
       'funcionario.ctps': employee.ctps || '',
+      'funcionario.ctps_serie': employee.ctpsSerie || '',
+      'funcionario.ctps_estado': employee.ctpsState || '',
+      'funcionario.orgao_emissor': employee.rgIssuingBody || '',
+      'funcionario.rg_estado': employee.rgState || '',
+      'funcionario.raca': employee.race || '',
+      'funcionario.grau_instrucao': employee.educationLevel || '',
+      'funcionario.tipo_sanguineo': employee.bloodType || '',
+      'funcionario.filhos': employee.children || '',
+      'funcionario.contato_emergencia': employee.emergencyContact || '',
+      'funcionario.telefone_emergencia': employee.emergencyPhone || '',
+      'funcionario.uniforme_camisa': employee.uniformShirt || '',
+      'funcionario.uniforme_camiseta': employee.uniformTShirt || '',
+      'funcionario.uniforme_calca': employee.uniformPants || '',
+      'funcionario.uniforme_jaqueta': employee.uniformJacket || '',
+      'funcionario.uniforme_casaco': employee.uniformCoat || '',
+      'funcionario.uniforme_botina': employee.bootSize || '',
     };
   }
 
