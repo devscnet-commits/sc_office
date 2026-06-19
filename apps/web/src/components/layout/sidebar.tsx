@@ -57,7 +57,7 @@ const navItems = [
     title: 'Compliance',
     href: '/compliance',
     icon: ShieldCheck,
-    roles: ['ADMIN', 'RH'],
+    roles: ['ADMIN', 'RH', 'GESTOR'],
   },
   {
     title: 'Organograma',
@@ -110,9 +110,9 @@ export function Sidebar() {
     <aside className="w-64 border-r bg-card flex flex-col h-full shrink-0">
       <div className="p-5 border-b bg-primary">
         <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="flex items-center justify-center rounded-lg bg-white px-2 py-1">
-            <span className="text-primary font-black text-sm tracking-tight leading-none">SC</span>
-            <span className="text-primary font-black text-sm tracking-tight leading-none">NET</span>
+          <div className="flex items-center justify-center rounded-lg bg-white px-2 py-1.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.svg" alt="SCNET" className="h-6 w-auto" />
           </div>
           <div>
             <p className="font-semibold text-sm text-white">SC Office</p>

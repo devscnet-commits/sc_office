@@ -26,7 +26,7 @@ export class EmployeeDocumentsController {
   }
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.RH)
+  @Roles(UserRole.ADMIN, UserRole.RH, UserRole.GESTOR)
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload de documento pessoal' })
@@ -66,7 +66,7 @@ export class EmployeeDocumentsController {
   }
 
   @Patch(':docId/verify')
-  @Roles(UserRole.ADMIN, UserRole.RH)
+  @Roles(UserRole.ADMIN, UserRole.RH, UserRole.GESTOR)
   @ApiOperation({ summary: 'Verificar/validar documento' })
   verify(
     @Param('employeeId') employeeId: string,

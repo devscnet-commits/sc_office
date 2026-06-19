@@ -45,7 +45,7 @@ interface Props { employeeId: string }
 
 export function EmployeeDocuments({ employeeId }: Props) {
   const qc = useQueryClient();
-  const { canManageEmployees } = usePermissions();
+  const { canManageEmployees, canManageDocuments } = usePermissions();
   const [uploadOpen, setUploadOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({ type: '', name: '', issuedAt: '', expiresAt: '', description: '' });
@@ -109,7 +109,7 @@ export function EmployeeDocuments({ employeeId }: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{docs.length} documento(s) cadastrado(s)</p>
-        {canManageEmployees && (
+        {canManageDocuments && (
           <Button size="sm" onClick={() => setUploadOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Adicionar Documento
@@ -124,7 +124,7 @@ export function EmployeeDocuments({ employeeId }: Props) {
           <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
             <FileText className="h-10 w-10 text-muted-foreground" />
             <p className="text-muted-foreground">Nenhum documento cadastrado</p>
-            {canManageEmployees && (
+            {canManageDocuments && (
               <Button size="sm" onClick={() => setUploadOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Adicionar primeiro documento
@@ -184,7 +184,7 @@ export function EmployeeDocuments({ employeeId }: Props) {
                         <ShieldCheck className="h-3 w-3 mr-1" />
                         Verificado
                       </Badge>
-                    ) : canManageEmployees ? (
+                    ) : canManageDocuments ? (
                       <Button
                         variant="outline"
                         size="sm"

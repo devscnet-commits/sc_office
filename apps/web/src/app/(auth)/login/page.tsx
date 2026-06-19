@@ -41,10 +41,8 @@ export default function LoginPage() {
       <Card className="w-full max-w-md shadow-2xl border-0">
         <CardHeader className="space-y-1 text-center pb-6">
           <div className="flex justify-center mb-4">
-            <div className="flex items-center justify-center rounded-xl bg-primary px-4 py-2">
-              <span className="text-white font-black text-2xl tracking-tight">SC</span>
-              <span className="text-white font-black text-2xl tracking-tight">NET</span>
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.svg" alt="SCNET" className="h-12 w-auto" />
           </div>
           <CardTitle className="text-2xl font-bold">SC Office</CardTitle>
 
