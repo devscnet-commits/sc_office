@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, AlertCircle, Clock, Users, CalendarPlus, Info } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Clock, Users, CalendarPlus, Info, FolderOpen } from 'lucide-react';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/utils';
 import { usePermissions } from '../../stores/auth.store';
@@ -67,6 +68,7 @@ function ExpirationTable({ items, emptyText }: { items: ExpirationEntry[]; empty
           <TableHead>Documento</TableHead>
           <TableHead>Vencimento</TableHead>
           <TableHead>Status</TableHead>
+          <TableHead className="text-right">Ação</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -85,6 +87,15 @@ function ExpirationTable({ items, emptyText }: { items: ExpirationEntry[]; empty
                   {item.daysUntilExpiration} dias restantes
                 </Badge>
               )}
+            </TableCell>
+            <TableCell className="text-right">
+              <Link
+                href={`/employees/${item.employeeId}`}
+                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
+                Abrir ficha
+              </Link>
             </TableCell>
           </TableRow>
         ))}

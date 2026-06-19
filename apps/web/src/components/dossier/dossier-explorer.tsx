@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Folder, FolderOpen, File, Upload, Trash2, Download,
-  Plus, ChevronRight, ChevronDown, ArrowLeft,
+  Plus, ChevronRight, ChevronDown, ArrowLeft, FolderInput,
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/utils';
@@ -64,12 +64,24 @@ export function DossierExplorer({ employeeId }: Props) {
   const [uploadTargetId, setUploadTargetId] = useState<string>('');
   const [uploadType, setUploadType] = useState('OUTRO');
   const [uploadExpiresAt, setUploadExpiresAt] = useState('');
+  const [movingItem, setMovingItem] = useState<{ id: string; kind: 'file' | 'doc'; name: string } | null>(null);
+  const [moveTargetId, setMoveTargetId] = useState('');
 
   const { data: treeData } = useQuery({
     queryKey: ['dossier-tree', employeeId],
     queryFn: () => api.get(`/employees/${employeeId}/dossier`) as any,
   });
   const tree: DossierFolder[] = treeData?.data ?? [];
+
+  // Lista plana de todas as pastas (inclui subpastas), para o seletor de "mover"
+  const flattenFolders = (nodes: DossierFolder[], acc: DossierFolder[] = []): DossierFolder[] => {
+    for (const n of nodes) {
+      acc.push(n);
+      if (n.children?.length) flattenFolders(n.children, acc);
+    }
+    return acc;
+  };
+  const allFolders = flattenFolders(tree);
 
   const { data: contentsData } = useQuery({
     queryKey: ['dossier-contents', activeFolder?.id],
@@ -133,6 +145,28 @@ export function DossierExplorer({ employeeId }: Props) {
     onSuccess: () => { toast.success('Arquivo removido'); invalidate(); },
     onError: (e: any) => toast.error(e?.message || 'Erro'),
   });
+
+  const moveMutation = useMutation({
+    mutationFn: () => {
+      if (!movingItem || !moveTargetId) throw new Error('Selecione a pasta de destino');
+      // Arquivos enviados e documentos gerados usam endpoints diferentes
+      return movingItem.kind === 'file'
+        ? api.post(`/dossier/files/${movingItem.id}/move`, { targetFolderId: moveTargetId })
+        : api.post(`/documents/${movingItem.id}/save-to-dossier`, { dossierFolderId: moveTargetId });
+    },
+    onSuccess: () => {
+      toast.success('Movido com sucesso');
+      setMovingItem(null);
+      setMoveTargetId('');
+      invalidate();
+    },
+    onError: (e: any) => toast.error(e?.message || 'Erro ao mover'),
+  });
+
+  const openMove = (id: string, kind: 'file' | 'doc', name: string) => {
+    setMoveTargetId('');
+    setMovingItem({ id, kind, name });
+  };
 
   const toggleFolder = (id: string) => {
     setOpenFolders((prev) => {
@@ -261,6 +295,17 @@ export function DossierExplorer({ employeeId }: Props) {
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="h-7 w-7"
+                        title="Mover para outra pasta"
+                        onClick={() => openMove(file.id, 'file', file.name || file.fileStorage?.originalName || 'arquivo')}
+                      >
+                        <FolderInput className="h-3 w-3" />
+                      </Button>
+                    )}
+                    {canManageEmployees && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="h-7 w-7 text-destructive"
                         onClick={() => { if (confirm('Remover arquivo?')) deleteFileMutation.mutate(file.id); }}
                       >
@@ -280,14 +325,27 @@ export function DossierExplorer({ employeeId }: Props) {
                       <p className="text-xs text-muted-foreground">Gerado em {formatDate(doc.createdAt)}</p>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => downloadBlob(`/documents/${doc.id}/download?format=pdf`, (doc.name || 'documento') + '.pdf')}
-                  >
-                    <Download className="h-3 w-3" />
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => downloadBlob(`/documents/${doc.id}/download?format=pdf`, (doc.name || 'documento') + '.pdf')}
+                    >
+                      <Download className="h-3 w-3" />
+                    </Button>
+                    {canManageEmployees && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Mover para outra pasta"
+                        onClick={() => openMove(doc.id, 'doc', doc.name || 'documento')}
+                      >
+                        <FolderInput className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
 
@@ -374,6 +432,33 @@ export function DossierExplorer({ employeeId }: Props) {
             <Button variant="outline" onClick={() => setUploadOpen(false)}>Cancelar</Button>
             <Button onClick={() => uploadMutation.mutate()} disabled={!uploadFile || uploadMutation.isPending}>
               {uploadMutation.isPending ? 'Enviando...' : 'Enviar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move Dialog */}
+      <Dialog open={!!movingItem} onOpenChange={(o) => { if (!o) setMovingItem(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Mover para outra pasta</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Movendo <span className="font-medium text-foreground">{movingItem?.name}</span>.
+            Escolha a pasta de destino:
+          </p>
+          <Select value={moveTargetId} onValueChange={setMoveTargetId}>
+            <SelectTrigger><SelectValue placeholder="Selecione a pasta" /></SelectTrigger>
+            <SelectContent>
+              {allFolders
+                .filter((f) => f.id !== activeFolder?.id)
+                .map((f) => (
+                  <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMovingItem(null)}>Cancelar</Button>
+            <Button onClick={() => moveMutation.mutate()} disabled={!moveTargetId || moveMutation.isPending}>
+              {moveMutation.isPending ? 'Movendo...' : 'Mover'}
             </Button>
           </DialogFooter>
         </DialogContent>
