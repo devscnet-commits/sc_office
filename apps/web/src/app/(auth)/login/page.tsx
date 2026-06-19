@@ -9,7 +9,7 @@ import { useAuthStore } from '../../../stores/auth.store';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '../../../components/ui/card';
 import { Loader2 } from 'lucide-react';
 
 const loginSchema = z.object({
@@ -39,14 +39,12 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary to-blue-900 p-4">
       <Card className="w-full max-w-md shadow-2xl border-0">
-        <CardHeader className="space-y-1 text-center pb-6">
-          <div className="flex justify-center mb-4">
+        <CardHeader className="space-y-2 text-center pb-6">
+          <div className="flex justify-center mb-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.webp" alt="SCNET" className="h-12 w-auto" />
+            <img src="/logo.webp" alt="SCNET" className="h-16 w-auto" />
           </div>
-          <CardTitle className="text-2xl font-bold">SC Office</CardTitle>
-
-          <CardDescription>
+          <CardDescription className="text-sm">
             Sistema de Gestão de RH e Documentação
           </CardDescription>
         </CardHeader>
