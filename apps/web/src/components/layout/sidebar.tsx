@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Users, FileText, FilePlus, FolderOpen, Building2,
   LayoutDashboard, Settings, Shield, BarChart3,
-  ChevronRight, Briefcase, ShieldCheck, GitBranch,
+  ChevronRight, Briefcase, ShieldCheck, GitBranch, Archive,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { usePermissions } from '../../stores/auth.store';
@@ -45,6 +45,12 @@ const navItems = [
     title: 'Documentos',
     href: '/documents',
     icon: FolderOpen,
+    roles: ['ADMIN', 'RH', 'GESTOR', 'CONSULTA'],
+  },
+  {
+    title: 'Dossiês',
+    href: '/dossier',
+    icon: Archive,
     roles: ['ADMIN', 'RH', 'GESTOR', 'CONSULTA'],
   },
   {
