@@ -78,12 +78,12 @@ export function EmployeeDetail({ employeeId }: Props) {
           <HealthScoreBadge employeeId={employeeId} showScore />
           <Badge variant={status.variant}>{status.label}</Badge>
           {canManageEmployees && (
-            <Button variant="outline" size="sm" onClick={() => router.push(`/dashboard/employees/${employeeId}/edit`)}>
+            <Button variant="outline" size="sm" onClick={() => router.push(`/employees/${employeeId}/edit`)}>
               <Edit className="h-4 w-4 mr-2" />
               Editar
             </Button>
           )}
-          <Button size="sm" onClick={() => router.push(`/dashboard/documents/generate?employeeId=${employeeId}`)}>
+          <Button size="sm" onClick={() => router.push(`/documents/generate?employeeId=${employeeId}`)}>
             <FileText className="h-4 w-4 mr-2" />
             Gerar Documento
           </Button>

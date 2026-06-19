@@ -320,7 +320,9 @@ export class DocumentsService {
     page?: number;
     limit?: number;
   }) {
-    const { employeeId, templateId, status, page = 1, limit = 20 } = filter;
+    const { employeeId, templateId, status } = filter;
+    const page = Math.max(1, Number(filter.page) || 1);
+    const limit = Math.min(500, Math.max(1, Number(filter.limit) || 20));
     const where: any = {};
 
     if (employeeId) where.employeeId = employeeId;

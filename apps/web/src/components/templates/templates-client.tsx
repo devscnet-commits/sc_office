@@ -144,8 +144,10 @@ export function TemplatesClient() {
             <div className="flex flex-wrap gap-1.5 max-h-80 overflow-y-auto">
               {variables.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
               {variables.map((v, i) => {
-                const key = typeof v === 'string' ? v : v.key || v.name || v.variable;
-                return <Badge key={i} variant="secondary" className="font-mono text-[10px]">{`{{${key}}}`}</Badge>;
+                const path = typeof v === 'string'
+                  ? v.replace(/[{}]/g, '')
+                  : String(v.path ?? v.name ?? '').replace(/[{}]/g, '');
+                return <Badge key={i} variant="secondary" className="font-mono text-[10px]">{`{{${path}}}`}</Badge>;
               })}
             </div>
           </CardContent>

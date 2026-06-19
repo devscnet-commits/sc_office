@@ -53,7 +53,7 @@ export function EmployeesClient() {
           </p>
         </div>
         {canManageEmployees && (
-          <Button onClick={() => router.push('/dashboard/employees/new')}>
+          <Button onClick={() => router.push('/employees/new')}>
             <Plus className="mr-2 h-4 w-4" />
             Novo Funcionário
           </Button>
@@ -145,21 +145,21 @@ export function EmployeesClient() {
                             <Button variant="ghost" size="sm">···</Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => router.push(`/dashboard/employees/${emp.id}`)}>
+                            <DropdownMenuItem onClick={() => router.push(`/employees/${emp.id}`)}>
                               <Eye className="mr-2 h-4 w-4" />
                               Visualizar
                             </DropdownMenuItem>
                             {canManageEmployees && (
-                              <DropdownMenuItem onClick={() => router.push(`/dashboard/employees/${emp.id}/edit`)}>
+                              <DropdownMenuItem onClick={() => router.push(`/employees/${emp.id}/edit`)}>
                                 <Edit className="mr-2 h-4 w-4" />
                                 Editar
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem onClick={() => router.push(`/dashboard/documents/generate?employeeId=${emp.id}`)}>
+                            <DropdownMenuItem onClick={() => router.push(`/documents/generate?employeeId=${emp.id}`)}>
                               <FileText className="mr-2 h-4 w-4" />
                               Gerar Documento
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => router.push(`/dashboard/dossier/${emp.id}`)}>
+                            <DropdownMenuItem onClick={() => router.push(`/employees/${emp.id}`)}>
                               <Folder className="mr-2 h-4 w-4" />
                               Dossiê
                             </DropdownMenuItem>

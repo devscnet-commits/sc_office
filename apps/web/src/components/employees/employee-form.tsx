@@ -92,7 +92,7 @@ export function EmployeeForm({ employeeId }: Props) {
       toast.success(isEdit ? 'Funcionário atualizado' : 'Funcionário cadastrado');
       qc.invalidateQueries({ queryKey: ['employees'] });
       const id = isEdit ? employeeId : res?.data?.id;
-      router.push(id ? `/dashboard/employees/${id}` : '/dashboard/employees');
+      router.push(id ? `/employees/${id}` : '/employees');
     },
     onError: (e: any) => toast.error(e?.message || 'Erro ao salvar'),
   });
