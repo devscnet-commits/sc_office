@@ -60,6 +60,11 @@ export class SetValidityDto {
   @IsString()
   employeeDocumentId?: string;
 
+  @ApiPropertyOptional({ description: 'Vincula a um arquivo do dossiê' })
+  @IsOptional()
+  @IsString()
+  dossierFileId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

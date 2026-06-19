@@ -55,6 +55,9 @@ interface DocumentValidity {
   expirationDate: Date;
   daysUntilExpiration: number;
   status: ValidityStatus;
+  employeeDocumentId?: string | null;
+  dossierFileId?: string | null;
+  documentName?: string | null;
 }
 
 const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
@@ -229,6 +232,7 @@ export class ComplianceService {
         expirationDate: dto.expirationDate ? new Date(dto.expirationDate) : undefined,
         status,
         employeeDocumentId: dto.employeeDocumentId,
+        dossierFileId: dto.dossierFileId,
         notes: dto.notes,
       },
       update: {
@@ -236,6 +240,7 @@ export class ComplianceService {
         expirationDate: dto.expirationDate ? new Date(dto.expirationDate) : undefined,
         status,
         employeeDocumentId: dto.employeeDocumentId,
+        dossierFileId: dto.dossierFileId,
         notes: dto.notes,
       },
     });
@@ -265,6 +270,8 @@ export class ComplianceService {
       },
       include: {
         employee: { select: { id: true, fullName: true, status: true } },
+        employeeDocument: { select: { id: true, name: true } },
+        dossierFile: { select: { id: true, name: true } },
       },
       orderBy: { expirationDate: 'asc' },
     });
@@ -279,6 +286,9 @@ export class ComplianceService {
       expirationDate: v.expirationDate,
       daysUntilExpiration: differenceInDays(new Date(v.expirationDate), today),
       status: v.status,
+      employeeDocumentId: v.employeeDocumentId,
+      dossierFileId: v.dossierFileId,
+      documentName: v.employeeDocument?.name ?? v.dossierFile?.name ?? null,
     });
 
     const expired = all

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, AlertCircle, Clock, Users, CalendarPlus, Info, FolderOpen } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Clock, Users, CalendarPlus, Info, FolderOpen, FileText } from 'lucide-react';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/utils';
 import { usePermissions } from '../../stores/auth.store';
@@ -29,6 +29,26 @@ interface ExpirationEntry {
   expirationDate: string;
   daysUntilExpiration: number;
   status: string;
+  employeeDocumentId?: string | null;
+  dossierFileId?: string | null;
+  documentName?: string | null;
+}
+
+// Baixa um arquivo protegido (precisa do token) e abre/salva no navegador
+async function downloadProtected(url: string, filename: string) {
+  try {
+    const blob: any = await api.get(url, { responseType: 'blob' });
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+  } catch {
+    toast.error('Erro ao abrir o documento');
+  }
 }
 
 interface Dashboard {
@@ -89,13 +109,32 @@ function ExpirationTable({ items, emptyText }: { items: ExpirationEntry[]; empty
               )}
             </TableCell>
             <TableCell className="text-right">
-              <Link
-                href={`/employees/${item.employeeId}`}
-                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-              >
-                <FolderOpen className="h-3.5 w-3.5" />
-                Abrir ficha
-              </Link>
+              {item.employeeDocumentId || item.dossierFileId ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadProtected(
+                      item.employeeDocumentId
+                        ? `/employees/${item.employeeId}/documents/${item.employeeDocumentId}/download`
+                        : `/dossier/files/${item.dossierFileId}/download`,
+                      item.documentName || `${item.label}`,
+                    )
+                  }
+                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                  title="Abrir o documento vinculado"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  Abrir documento
+                </button>
+              ) : (
+                <Link
+                  href={`/employees/${item.employeeId}`}
+                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                >
+                  <FolderOpen className="h-3.5 w-3.5" />
+                  Abrir ficha
+                </Link>
+              )}
             </TableCell>
           </TableRow>
         ))}
@@ -112,6 +151,7 @@ function RegisterValidityDialog() {
   const [issueDate, setIssueDate] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [linkedDoc, setLinkedDoc] = useState(''); // "emp:<id>" | "dos:<id>"
 
   const { data: empData } = useQuery({
     queryKey: ['employees', 'all-for-validity'],
@@ -120,12 +160,28 @@ function RegisterValidityDialog() {
   });
   const employees: any[] = empData?.data?.data ?? empData?.data ?? [];
 
+  // Documentos do funcionário para vincular (aba Documentos + arquivos do Dossiê)
+  const { data: empDocsData } = useQuery({
+    queryKey: ['employee-documents', employeeId],
+    queryFn: () => api.get(`/employees/${employeeId}/documents`) as any,
+    enabled: open && !!employeeId,
+  });
+  const empDocs: any[] = empDocsData?.data?.data ?? empDocsData?.data ?? [];
+
+  const { data: dossierFilesData } = useQuery({
+    queryKey: ['dossier-files', employeeId],
+    queryFn: () => api.get(`/employees/${employeeId}/dossier/files`) as any,
+    enabled: open && !!employeeId,
+  });
+  const dossierFiles: any[] = dossierFilesData?.data?.data ?? dossierFilesData?.data ?? [];
+
   const reset = () => {
     setEmployeeId('');
     setDocumentType('');
     setIssueDate('');
     setExpirationDate('');
     setNotes('');
+    setLinkedDoc('');
   };
 
   const mutation = useMutation({
@@ -135,6 +191,8 @@ function RegisterValidityDialog() {
         issueDate: issueDate || undefined,
         expirationDate: expirationDate || undefined,
         notes: notes || undefined,
+        employeeDocumentId: linkedDoc.startsWith('emp:') ? linkedDoc.slice(4) : undefined,
+        dossierFileId: linkedDoc.startsWith('dos:') ? linkedDoc.slice(4) : undefined,
       }),
     onSuccess: () => {
       toast.success('Vencimento registrado');
@@ -160,7 +218,7 @@ function RegisterValidityDialog() {
         <div className="space-y-4">
           <div className="space-y-2">
             <Label>Funcionário</Label>
-            <Select value={employeeId} onValueChange={setEmployeeId}>
+            <Select value={employeeId} onValueChange={(v) => { setEmployeeId(v); setLinkedDoc(''); }}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione o funcionário" />
               </SelectTrigger>
@@ -200,6 +258,34 @@ function RegisterValidityDialog() {
               <Label>Data de vencimento</Label>
               <Input type="date" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)} />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Documento vinculado (opcional)</Label>
+            <Select value={linkedDoc} onValueChange={setLinkedDoc} disabled={!employeeId}>
+              <SelectTrigger>
+                <SelectValue placeholder={employeeId ? 'Sem documento (só lembrete)' : 'Escolha o funcionário primeiro'} />
+              </SelectTrigger>
+              <SelectContent>
+                {empDocs.length === 0 && dossierFiles.length === 0 && (
+                  <div className="px-2 py-1.5 text-sm text-muted-foreground">Nenhum documento encontrado para este funcionário</div>
+                )}
+                {empDocs.map((d) => (
+                  <SelectItem key={`emp:${d.id}`} value={`emp:${d.id}`}>
+                    {(d.name || d.type)} · Documentos
+                  </SelectItem>
+                ))}
+                {dossierFiles.map((f) => (
+                  <SelectItem key={`dos:${f.id}`} value={`dos:${f.id}`}>
+                    {f.name}{f.folder?.name ? ` (${f.folder.name})` : ''} · Dossiê
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              Vincule o arquivo que será acompanhado — ao aparecer no alerta, você clica e vai
+              direto nele. Sem vincular, fica apenas como lembrete (título e data).
+            </p>
           </div>
 
           <div className="space-y-2">
