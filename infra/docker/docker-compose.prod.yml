@@ -177,9 +177,22 @@ services:
     depends_on:
       - web
       - api
+    # ========================================================
+    # PORTAS DO PORTEIRO (Caddy) — escolha UM cenario:
+    #
+    # (A) Servidor dedicado: o Caddy cuida do HTTPS.
+    #     Mantenha as portas 80 e 443 abaixo. No .env:
+    #       SITE_ADDRESS=escritorio.scnet.com.br
+    #
+    # (B) MESMO servidor de outro site (atras do nginx/Apache/cPanel
+    #     que ja usa 80/443): COMENTE as linhas 80 e 443, DESCOMENTE a
+    #     linha 8080, e no .env use SITE_ADDRESS=:8080 . Depois aponte o
+    #     subdominio no proxy de fora para http://127.0.0.1:8080 (DEPLOY.md).
+    # ========================================================
     ports:
       - "80:80"
       - "443:443"
+      # - "127.0.0.1:8080:8080"   # (B) deixe SOMENTE esta linha
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS}
     volumes:
