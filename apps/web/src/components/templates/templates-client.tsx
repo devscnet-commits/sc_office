@@ -55,12 +55,18 @@ export function TemplatesClient() {
   const varPath = (v: any) =>
     typeof v === 'string' ? v.replace(/[{}]/g, '') : String(v.path ?? v.name ?? '').replace(/[{}]/g, '');
   const insertVariable = (v: any) => {
-    const token = `{{${varPath(v)}}}`;
+    const core = `{{${varPath(v)}}}`;
     const el = textareaRef.current;
-    if (!el) { setHtmlContent((c) => c + token); return; }
+    if (!el) { setHtmlContent((c) => c + (c && !/\s$/.test(c) ? ' ' : '') + core); return; }
     const start = el.selectionStart ?? htmlContent.length;
     const end = el.selectionEnd ?? htmlContent.length;
-    setHtmlContent(htmlContent.slice(0, start) + token + htmlContent.slice(end));
+    const before = htmlContent.slice(0, start);
+    const after = htmlContent.slice(end);
+    // Adiciona espaço automaticamente para a variável não colar na palavra vizinha
+    const needLead = before.length > 0 && !/[\s>\n]$/.test(before);
+    const needTrail = after.length > 0 && !/^[\s.,;:!?)<]/.test(after);
+    const token = (needLead ? ' ' : '') + core + (needTrail ? ' ' : '');
+    setHtmlContent(before + token + after);
     requestAnimationFrame(() => {
       el.focus();
       const pos = start + token.length;
