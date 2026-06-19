@@ -16,12 +16,14 @@ export class MinioService implements OnModuleInit {
   private readonly logger = new Logger(MinioService.name);
   private client: Minio.Client;
   private buckets: Record<string, string>;
+  private region = 'us-east-1';
 
   constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit() {
     const config = this.configService.get('storage.minio');
     this.buckets = this.configService.get('storage.buckets')!;
+    this.region = config.region || 'us-east-1';
 
     this.client = new Minio.Client({
       endPoint: config.endPoint,
@@ -29,18 +31,41 @@ export class MinioService implements OnModuleInit {
       useSSL: config.useSSL,
       accessKey: config.accessKey,
       secretKey: config.secretKey,
-      region: config.region,
+      region: this.region,
     });
 
-    await this.initializeBuckets();
+    // A inicialização dos buckets NUNCA deve derrubar a aplicação.
+    try {
+      await this.initializeBuckets();
+    } catch (err: any) {
+      this.logger.warn(`MinIO: inicialização de buckets falhou (a aplicação continua): ${err?.message || err}`);
+    }
   }
 
   private async initializeBuckets() {
-    for (const [name, bucketName] of Object.entries(this.buckets)) {
-      const exists = await this.client.bucketExists(bucketName as string);
-      if (!exists) {
-        await this.client.makeBucket(bucketName as string, 'us-east-1');
-        this.logger.log(`Bucket created: ${bucketName}`);
+    for (const [, bucketName] of Object.entries(this.buckets)) {
+      const name = bucketName as string;
+
+      // Algumas versões do cliente lançam erro quando o bucket não existe
+      // (ex.: primeiro boot). Tratamos como inexistente e tentamos criar.
+      let exists = false;
+      try {
+        exists = await this.client.bucketExists(name);
+      } catch {
+        exists = false;
+      }
+      if (exists) continue;
+
+      try {
+        await this.client.makeBucket(name, this.region);
+        this.logger.log(`Bucket criado: ${name}`);
+      } catch (err: any) {
+        const code = err?.code || '';
+        if (code === 'BucketAlreadyOwnedByYou' || code === 'BucketAlreadyExists') {
+          // bucket já existe — tudo certo
+        } else {
+          this.logger.warn(`MinIO: não foi possível criar o bucket ${name}: ${err?.message || code || err}`);
+        }
       }
     }
   }
