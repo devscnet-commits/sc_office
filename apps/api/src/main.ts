@@ -12,6 +12,12 @@ import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
 
+// Permite serializar BigInt em respostas JSON (ex.: tamanho de arquivos),
+// evitando "Do not know how to serialize a BigInt" (erro 500).
+(BigInt.prototype as any).toJSON = function () {
+  return Number(this);
+};
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['log', 'warn', 'error', 'fatal'],
