@@ -346,6 +346,18 @@ model Employee {
   ctpsSerie    String? @map("ctps_serie") @db.VarChar(10)
   ctpsState    String? @map("ctps_state") @db.VarChar(2)
 
+  // Dados complementares de admissao
+  educationLevel String? @map("education_level") @db.VarChar(50)
+  race           String? @db.VarChar(30)
+  bloodType      String? @map("blood_type") @db.VarChar(5)
+  children       String? @db.Text
+  uniformShirt   String? @map("uniform_shirt") @db.VarChar(10)
+  uniformTShirt  String? @map("uniform_tshirt") @db.VarChar(10)
+  uniformPants   String? @map("uniform_pants") @db.VarChar(10)
+  uniformJacket  String? @map("uniform_jacket") @db.VarChar(10)
+  uniformCoat    String? @map("uniform_coat") @db.VarChar(10)
+  bootSize       String? @map("boot_size") @db.VarChar(10)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
