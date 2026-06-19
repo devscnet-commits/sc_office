@@ -545,6 +545,7 @@ model DossierFile {
 
   folder      DossierFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
   fileStorage FileStorage   @relation(fields: [fileStorageId], references: [id])
+  documentValidity DocumentValidity[]
 
   @@index([folderId])
   @@index([uploadedBy])
@@ -710,6 +711,7 @@ model DocumentValidity {
   id                String         @id @default(cuid())
   employeeId        String         @map("employee_id")
   employeeDocumentId String?       @map("employee_document_id")
+  dossierFileId     String?        @map("dossier_file_id")
   documentType      DocumentType   @map("document_type")
   issueDate         DateTime?      @map("issue_date") @db.Date
   expirationDate    DateTime?      @map("expiration_date") @db.Date
@@ -722,6 +724,7 @@ model DocumentValidity {
 
   employee         Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   employeeDocument EmployeeDocument? @relation(fields: [employeeDocumentId], references: [id])
+  dossierFile      DossierFile?      @relation(fields: [dossierFileId], references: [id])
 
   @@unique([employeeId, documentType])
   @@index([employeeId])

@@ -51,6 +51,20 @@ export class DossierService {
     return this.prisma.dossierFolder.delete({ where: { id } });
   }
 
+  // Lista plana de todos os arquivos do dossiê do funcionário (para seletores)
+  async listAllFiles(employeeId: string) {
+    return this.prisma.dossierFile.findMany({
+      where: { folder: { employeeId }, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        createdAt: true,
+        folder: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async getFolderContents(folderId: string) {
     const [files, documents, subFolders] = await Promise.all([
       this.prisma.dossierFile.findMany({

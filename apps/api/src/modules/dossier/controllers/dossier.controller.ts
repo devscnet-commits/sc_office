@@ -23,6 +23,12 @@ export class DossierController {
     return this.service.getFolderTree(employeeId);
   }
 
+  @Get('employees/:employeeId/dossier/files')
+  @ApiOperation({ summary: 'Listar todos os arquivos do dossiê (lista plana)' })
+  listAllFiles(@Param('employeeId') employeeId: string) {
+    return this.service.listAllFiles(employeeId);
+  }
+
   @Post('employees/:employeeId/dossier/folders')
   @ApiOperation({ summary: 'Criar pasta no dossiê' })
   createFolder(
