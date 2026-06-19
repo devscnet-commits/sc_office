@@ -79,7 +79,7 @@ export class ComplianceController {
   // ============================================================
 
   @Post('employees/:employeeId/validity')
-  @Roles(UserRole.ADMIN, UserRole.RH)
+  @Roles(UserRole.ADMIN, UserRole.RH, UserRole.GESTOR)
   @ApiOperation({ summary: 'Registrar/atualizar validade de documento do funcionário' })
   setValidity(@Param('employeeId') employeeId: string, @Body() dto: SetValidityDto) {
     return this.compliance.setValidity(employeeId, dto);
@@ -125,7 +125,7 @@ export class ComplianceController {
   // ============================================================
 
   @Get('compliance/expiration-dashboard')
-  @Roles(UserRole.ADMIN, UserRole.RH)
+  @Roles(UserRole.ADMIN, UserRole.RH, UserRole.GESTOR)
   @ApiOperation({ summary: 'Dashboard de vencimentos: vencidos, críticos, próximos' })
   getExpirationDashboard() {
     return this.compliance.getExpirationDashboard();

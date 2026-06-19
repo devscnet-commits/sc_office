@@ -83,6 +83,9 @@ export const usePermissions = () => {
     isRH: user?.role === 'RH' || user?.role === 'ADMIN',
     isGestor: user?.role === 'GESTOR' || user?.role === 'ADMIN',
     canManageEmployees: ['ADMIN', 'RH'].includes(user?.role || ''),
+    // Gestor "cuida de documentos": anexa/verifica documentos, organiza o
+    // dossiê e registra validades — mas não edita cadastro nem exclui.
+    canManageDocuments: ['ADMIN', 'RH', 'GESTOR'].includes(user?.role || ''),
     canManageTemplates: ['ADMIN', 'RH'].includes(user?.role || ''),
     canViewAudit: user?.role === 'ADMIN',
     canManageUsers: user?.role === 'ADMIN',

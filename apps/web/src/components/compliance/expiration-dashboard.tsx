@@ -228,7 +228,7 @@ function RegisterValidityDialog() {
 }
 
 export function ExpirationDashboard() {
-  const { canManageEmployees } = usePermissions();
+  const { canManageDocuments } = usePermissions();
 
   const { data, isLoading, error } = useQuery<{ data: Dashboard }>({
     queryKey: ['expiration-dashboard'],
@@ -280,7 +280,7 @@ export function ExpirationDashboard() {
             clicando em <strong>Registrar vencimento</strong> aqui mesmo.
           </AlertDescription>
         </Alert>
-        {canManageEmployees && (
+        {canManageDocuments && (
           <div className="shrink-0">
             <RegisterValidityDialog />
           </div>

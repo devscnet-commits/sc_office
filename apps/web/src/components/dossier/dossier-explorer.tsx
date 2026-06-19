@@ -54,7 +54,7 @@ interface Props { employeeId: string }
 
 export function DossierExplorer({ employeeId }: Props) {
   const qc = useQueryClient();
-  const { canManageEmployees } = usePermissions();
+  const { canManageEmployees, canManageDocuments } = usePermissions();
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
   const [activeFolder, setActiveFolder] = useState<{ id: string; name: string } | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -214,7 +214,7 @@ export function DossierExplorer({ employeeId }: Props) {
       <div className="w-64 border rounded-md flex flex-col shrink-0">
         <div className="p-3 border-b flex items-center justify-between">
           <span className="text-sm font-medium">Pastas</span>
-          {canManageEmployees && (
+          {canManageDocuments && (
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setNewFolderOpen(true)}>
               <Plus className="h-3 w-3" />
             </Button>
@@ -243,13 +243,13 @@ export function DossierExplorer({ employeeId }: Props) {
               <span className="text-sm text-muted-foreground">Selecione uma pasta</span>
             )}
           </div>
-          {activeFolder && canManageEmployees && (
+          {activeFolder && canManageDocuments && (
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => openUpload(activeFolder.id)}>
                 <Upload className="h-3 w-3 mr-1" />
                 Upload
               </Button>
-              {!tree.find((f) => f.id === activeFolder.id)?.isSystem && (
+              {canManageEmployees && !tree.find((f) => f.id === activeFolder.id)?.isSystem && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -291,7 +291,7 @@ export function DossierExplorer({ employeeId }: Props) {
                     >
                       <Download className="h-3 w-3" />
                     </Button>
-                    {canManageEmployees && (
+                    {canManageDocuments && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -334,7 +334,7 @@ export function DossierExplorer({ employeeId }: Props) {
                     >
                       <Download className="h-3 w-3" />
                     </Button>
-                    {canManageEmployees && (
+                    {canManageDocuments && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -354,7 +354,7 @@ export function DossierExplorer({ employeeId }: Props) {
                   <CardContent className="flex flex-col items-center justify-center py-8 gap-2">
                     <File className="h-8 w-8 text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">Pasta vazia</p>
-                    {canManageEmployees && (
+                    {canManageDocuments && (
                       <Button size="sm" variant="outline" onClick={() => openUpload(activeFolder.id)}>
                         <Upload className="h-3 w-3 mr-1" />
                         Enviar arquivo

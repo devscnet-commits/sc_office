@@ -57,7 +57,7 @@ const navItems = [
     title: 'Compliance',
     href: '/compliance',
     icon: ShieldCheck,
-    roles: ['ADMIN', 'RH'],
+    roles: ['ADMIN', 'RH', 'GESTOR'],
   },
   {
     title: 'Organograma',

@@ -49,11 +49,12 @@ const ROLE_COLORS: Record<string, string> = {
 const PERMISSION_MATRIX: { area: string; admin: boolean; rh: boolean; gestor: boolean; consulta: boolean }[] = [
   { area: 'Visualizar dados (funcionários, templates, documentos, dossiês, compliance)', admin: true, rh: true, gestor: true, consulta: true },
   { area: 'Gerar documentos a partir de templates', admin: true, rh: true, gestor: true, consulta: true },
+  { area: 'Anexar e verificar documentos; organizar o dossiê (subir, mover, criar pastas)', admin: true, rh: true, gestor: true, consulta: false },
+  { area: 'Registrar validades / vencimentos no Compliance', admin: true, rh: true, gestor: true, consulta: false },
   { area: 'Cadastrar e editar funcionários', admin: true, rh: true, gestor: false, consulta: false },
-  { area: 'Anexar, verificar e excluir documentos do funcionário', admin: true, rh: true, gestor: false, consulta: false },
-  { area: 'Registrar validades e requisitos (Compliance)', admin: true, rh: true, gestor: false, consulta: false },
   { area: 'Criar, editar e excluir templates', admin: true, rh: true, gestor: false, consulta: false },
   { area: 'Criar e editar departamentos', admin: true, rh: true, gestor: false, consulta: false },
+  { area: 'Excluir documentos e arquivos', admin: true, rh: true, gestor: false, consulta: false },
   { area: 'Excluir funcionários e departamentos', admin: true, rh: false, gestor: false, consulta: false },
   { area: 'Gerenciar usuários e papéis', admin: true, rh: false, gestor: false, consulta: false },
   { area: 'Ver logs de auditoria', admin: true, rh: false, gestor: false, consulta: false },
@@ -222,7 +223,8 @@ export function UsersClient() {
           <div className="mt-4 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
             <p><span className="font-medium text-foreground">Administrador:</span> acesso total, incluindo usuários e auditoria.</p>
             <p><span className="font-medium text-foreground">RH:</span> opera o dia a dia (funcionários, documentos, templates, compliance), mas não gerencia usuários.</p>
-            <p><span className="font-medium text-foreground">Gestor e Consulta:</span> hoje têm o mesmo acesso — apenas visualizar e gerar documentos. Se quiser dar mais poderes ao Gestor (ex.: editar funcionários da equipe), me avise que eu ajusto.</p>
+            <p><span className="font-medium text-foreground">Gestor:</span> cuida da documentação — anexa e verifica documentos, organiza o dossiê e registra vencimentos no Compliance. Não edita o cadastro nem exclui.</p>
+            <p><span className="font-medium text-foreground">Consulta:</span> somente visualização e geração de documentos.</p>
           </div>
         </CardContent>
       </Card>
