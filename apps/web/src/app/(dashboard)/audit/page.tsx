@@ -1,8 +1,8 @@
 import { Metadata } from 'next';
-import { ComingSoon } from '../../../components/ui/coming-soon';
+import { AuditClient } from '../../../components/audit/audit-client';
 
 export const metadata: Metadata = { title: 'Auditoria' };
 
 export default function AuditPage() {
-  return <ComingSoon title="Auditoria" description="Logs de auditoria do sistema" />;
+  return <AuditClient />;
 }
