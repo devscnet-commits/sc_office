@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import { MinioService } from '../../../infrastructure/minio/minio.service';
 import { AuditService } from '../../audit/audit.service';
-import { DocumentType } from '@prisma/client';
+import { DocumentType, ValidityStatus } from '@prisma/client';
 
 @Injectable()
 export class DossierService {
@@ -81,6 +81,7 @@ export class DossierService {
     file: Express.Multer.File,
     type: DocumentType,
     userId: string,
+    expiresAt?: string,
   ) {
     const folder = await this.prisma.dossierFolder.findUnique({ where: { id: folderId } });
     if (!folder) throw new NotFoundException('Pasta não encontrada');
@@ -105,7 +106,7 @@ export class DossierService {
       },
     });
 
-    return this.prisma.dossierFile.create({
+    const dossierFile = await this.prisma.dossierFile.create({
       data: {
         name: file.originalname,
         folderId,
@@ -116,6 +117,30 @@ export class DossierService {
         uploadedBy: userId,
       },
     });
+
+    // Se foi informada validade, registra para aparecer no Compliance
+    if (expiresAt) {
+      const expDate = new Date(expiresAt);
+      await this.prisma.documentValidity.create({
+        data: {
+          employeeId: folder.employeeId,
+          documentType: type,
+          expirationDate: expDate,
+          status: this.computeStatus(expDate),
+        },
+      });
+    }
+
+    return dossierFile;
+  }
+
+  private computeStatus(expirationDate: Date | null): ValidityStatus {
+    if (!expirationDate) return ValidityStatus.NOT_APPLICABLE;
+    const diff = Math.floor((expirationDate.getTime() - Date.now()) / 86400000);
+    if (diff < 0) return ValidityStatus.EXPIRED;
+    if (diff <= 7) return ValidityStatus.CRITICAL;
+    if (diff <= 30) return ValidityStatus.EXPIRING_SOON;
+    return ValidityStatus.VALID;
   }
 
   async downloadFile(fileId: string) {

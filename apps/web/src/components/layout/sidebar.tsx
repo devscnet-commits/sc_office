@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Users, FileText, FilePlus, FolderOpen, Building2,
   LayoutDashboard, Settings, Shield, BarChart3,
-  ChevronRight, Briefcase, ShieldCheck, GitBranch,
+  ChevronRight, Briefcase, ShieldCheck, GitBranch, Archive,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { usePermissions } from '../../stores/auth.store';
@@ -45,6 +45,12 @@ const navItems = [
     title: 'Documentos',
     href: '/documents',
     icon: FolderOpen,
+    roles: ['ADMIN', 'RH', 'GESTOR', 'CONSULTA'],
+  },
+  {
+    title: 'Dossiês',
+    href: '/dossier',
+    icon: Archive,
     roles: ['ADMIN', 'RH', 'GESTOR', 'CONSULTA'],
   },
   {
@@ -93,6 +99,13 @@ export function Sidebar() {
     item.roles.includes(role || 'CONSULTA')
   );
 
+  // Item ativo = href que melhor casa com a URL (o mais específico), evitando
+  // que /documents e /documents/generate fiquem ativos ao mesmo tempo.
+  const activeHref = visibleItems
+    .map((i) => i.href)
+    .filter((h) => pathname === h || pathname.startsWith(h + '/'))
+    .sort((a, b) => b.length - a.length)[0];
+
   return (
     <aside className="w-64 border-r bg-card flex flex-col h-full shrink-0">
       <div className="p-5 border-b bg-primary">
@@ -111,8 +124,7 @@ export function Sidebar() {
 
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {visibleItems.map((item) => {
-          const isActive = pathname === item.href ||
-            (item.href !== '/dashboard' && pathname.startsWith(item.href));
+          const isActive = item.href === activeHref;
           const Icon = item.icon;
 
           return (

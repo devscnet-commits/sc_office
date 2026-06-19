@@ -210,6 +210,37 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsString()
   ctpsState?: string;
+
+  // Dados complementares de admissao
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  educationLevel?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  race?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  bloodType?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  children?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  uniformShirt?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  uniformTShirt?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  uniformPants?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  uniformJacket?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  uniformCoat?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  bootSize?: string;
 }
 
 export class UpdateEmployeeDto extends CreateEmployeeDto {

@@ -7,14 +7,31 @@ import {
   Folder, FolderOpen, File, Upload, Trash2, Download,
   Plus, ChevronRight, ChevronDown, ArrowLeft,
 } from 'lucide-react';
-import { api, uploadFile } from '../../lib/api';
+import { api } from '../../lib/api';
 import { formatDate } from '../../lib/utils';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import { Card, CardContent } from '../ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { usePermissions } from '../../stores/auth.store';
+
+const DOC_TYPE_OPTIONS = [
+  { v: 'OUTRO', l: 'Outro' },
+  { v: 'ASO', l: 'ASO (exame ocupacional)' },
+  { v: 'CNH', l: 'CNH' },
+  { v: 'CERTIFICADO', l: 'Certificado' },
+  { v: 'TREINAMENTO', l: 'Treinamento (NR)' },
+  { v: 'CONTRATO', l: 'Contrato' },
+  { v: 'RG', l: 'RG' },
+  { v: 'CPF', l: 'CPF' },
+  { v: 'CTPS', l: 'CTPS' },
+  { v: 'COMPROVANTE_ENDERECO', l: 'Comprovante de endereço' },
+  { v: 'ADVERTENCIA', l: 'Advertência' },
+  { v: 'FERIAS', l: 'Férias' },
+  { v: 'RESCISAO', l: 'Rescisão' },
+];
 
 interface DossierFolder {
   id: string;
@@ -45,6 +62,8 @@ export function DossierExplorer({ employeeId }: Props) {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadTargetId, setUploadTargetId] = useState<string>('');
+  const [uploadType, setUploadType] = useState('OUTRO');
+  const [uploadExpiresAt, setUploadExpiresAt] = useState('');
 
   const { data: treeData } = useQuery({
     queryKey: ['dossier-tree', employeeId],
@@ -57,11 +76,29 @@ export function DossierExplorer({ employeeId }: Props) {
     queryFn: () => api.get(`/dossier/folders/${activeFolder!.id}/contents`) as any,
     enabled: !!activeFolder,
   });
-  const contents = contentsData?.data ?? { files: [], generatedDocuments: [] };
+  const contents = contentsData?.data ?? {};
+  const files = contents.files ?? [];
+  const docs = contents.documents ?? contents.generatedDocuments ?? [];
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['dossier-tree', employeeId] });
     if (activeFolder) qc.invalidateQueries({ queryKey: ['dossier-contents', activeFolder.id] });
+  };
+
+  const downloadBlob = async (url: string, filename: string) => {
+    try {
+      const blob: any = await api.get(url, { responseType: 'blob' });
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      toast.error('Erro ao baixar o arquivo');
+    }
   };
 
   const createFolderMutation = useMutation({
@@ -75,10 +112,13 @@ export function DossierExplorer({ employeeId }: Props) {
       if (!uploadFile) throw new Error('Selecione um arquivo');
       const fd = new FormData();
       fd.append('file', uploadFile);
-      fd.append('type', 'OUTRO');
-      return uploadFile(`/dossier/folders/${uploadTargetId}/upload`, fd);
+      fd.append('type', uploadType);
+      if (uploadExpiresAt) fd.append('expiresAt', uploadExpiresAt);
+      return api.post(`/dossier/folders/${uploadTargetId}/upload`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
     },
-    onSuccess: () => { toast.success('Arquivo enviado'); setUploadOpen(false); setUploadFile(null); invalidate(); },
+    onSuccess: () => { toast.success('Arquivo enviado'); setUploadOpen(false); setUploadFile(null); setUploadExpiresAt(''); setUploadType('OUTRO'); invalidate(); },
     onError: (e: any) => toast.error(e?.message || 'Erro ao enviar'),
   });
 
@@ -199,7 +239,7 @@ export function DossierExplorer({ employeeId }: Props) {
 
           {activeFolder && (
             <div className="space-y-1">
-              {contents.files.map((file: any) => (
+              {files.map((file: any) => (
                 <div key={file.id} className="flex items-center justify-between p-2 rounded hover:bg-muted text-sm">
                   <div className="flex items-center gap-2">
                     <File className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -213,7 +253,7 @@ export function DossierExplorer({ employeeId }: Props) {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7"
-                      onClick={() => window.open(`${process.env.NEXT_PUBLIC_API_URL}/dossier/files/${file.id}/download`, '_blank')}
+                      onClick={() => downloadBlob(`/dossier/files/${file.id}/download`, file.name || file.fileStorage?.originalName || 'arquivo')}
                     >
                       <Download className="h-3 w-3" />
                     </Button>
@@ -231,7 +271,7 @@ export function DossierExplorer({ employeeId }: Props) {
                 </div>
               ))}
 
-              {contents.generatedDocuments.map((doc: any) => (
+              {docs.map((doc: any) => (
                 <div key={doc.id} className="flex items-center justify-between p-2 rounded hover:bg-muted text-sm">
                   <div className="flex items-center gap-2">
                     <File className="h-4 w-4 text-blue-500 shrink-0" />
@@ -244,14 +284,14 @@ export function DossierExplorer({ employeeId }: Props) {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7"
-                    onClick={() => window.open(`${process.env.NEXT_PUBLIC_API_URL}/documents/${doc.id}/download`, '_blank')}
+                    onClick={() => downloadBlob(`/documents/${doc.id}/download?format=pdf`, (doc.name || 'documento') + '.pdf')}
                   >
                     <Download className="h-3 w-3" />
                   </Button>
                 </div>
               ))}
 
-              {contents.files.length === 0 && contents.generatedDocuments.length === 0 && (
+              {files.length === 0 && docs.length === 0 && (
                 <Card>
                   <CardContent className="flex flex-col items-center justify-center py-8 gap-2">
                     <File className="h-8 w-8 text-muted-foreground" />
@@ -312,6 +352,24 @@ export function DossierExplorer({ employeeId }: Props) {
             className="hidden"
             onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
           />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Tipo</label>
+              <Select value={uploadType} onValueChange={setUploadType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DOC_TYPE_OPTIONS.map((o) => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Data de validade (opcional)</label>
+              <Input type="date" value={uploadExpiresAt} onChange={(e) => setUploadExpiresAt(e.target.value)} />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Preencha a <strong>validade</strong> para o documento ser monitorado no <strong>Compliance</strong> (alertas de vencimento).
+          </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setUploadOpen(false)}>Cancelar</Button>
             <Button onClick={() => uploadMutation.mutate()} disabled={!uploadFile || uploadMutation.isPending}>

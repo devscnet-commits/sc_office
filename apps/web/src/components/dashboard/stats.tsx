@@ -38,7 +38,7 @@ export function DashboardStats() {
       description: 'Total no sistema',
       icon: Users,
       color: 'text-primary',
-      href: '/dashboard/employees',
+      href: '/employees',
       alert: false,
     },
     {
@@ -47,7 +47,7 @@ export function DashboardStats() {
       description: 'Total de documentos',
       icon: FolderOpen,
       color: 'text-purple-600',
-      href: '/dashboard/documents',
+      href: '/documents',
       alert: false,
     },
     {
@@ -56,7 +56,7 @@ export function DashboardStats() {
       description: 'Modelos disponíveis',
       icon: LayoutTemplate,
       color: 'text-blue-600',
-      href: '/dashboard/templates',
+      href: '/templates',
       alert: false,
     },
     {
@@ -65,7 +65,7 @@ export function DashboardStats() {
       description: 'Funcionários pendentes',
       icon: ShieldAlert,
       color: 'text-orange-600',
-      href: '/dashboard/compliance',
+      href: '/compliance',
       alert: (exp?.totalEmployeesWithPendencies ?? 0) > 0,
     },
     {
@@ -74,7 +74,7 @@ export function DashboardStats() {
       description: 'Renovação imediata',
       icon: AlertCircle,
       color: 'text-destructive',
-      href: '/dashboard/compliance',
+      href: '/compliance',
       alert: (exp?.expired?.length ?? 0) > 0,
     },
     {
@@ -83,7 +83,7 @@ export function DashboardStats() {
       description: 'Vencem em ≤7 dias',
       icon: AlertTriangle,
       color: 'text-orange-500',
-      href: '/dashboard/compliance',
+      href: '/compliance',
       alert: (exp?.critical?.length ?? 0) > 0,
     },
   ];
@@ -101,7 +101,7 @@ export function DashboardStats() {
               {exp?.expired?.length ?? 0} vencido(s) · {exp?.critical?.length ?? 0} crítico(s)
             </p>
           </div>
-          <Link href="/dashboard/compliance">
+          <Link href="/compliance">
             <Badge variant="destructive" className="cursor-pointer">Ver detalhes</Badge>
           </Link>
         </div>

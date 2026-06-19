@@ -1,8 +1,8 @@
 import { Metadata } from 'next';
-import { ComingSoon } from '../../../components/ui/coming-soon';
+import { DocumentsClient } from '../../../components/documents/documents-client';
 
 export const metadata: Metadata = { title: 'Documentos' };
 
 export default function DocumentsPage() {
-  return <ComingSoon title="Documentos" description="Documentos gerados" />;
+  return <DocumentsClient />;
 }

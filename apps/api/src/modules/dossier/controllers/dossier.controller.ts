@@ -51,9 +51,10 @@ export class DossierController {
     @Param('folderId') folderId: string,
     @UploadedFile() file: Express.Multer.File,
     @Body('type') type: DocumentType,
+    @Body('expiresAt') expiresAt: string,
     @CurrentUser('id') userId: string,
   ) {
-    return this.service.uploadFile(folderId, file, type || DocumentType.OUTRO, userId);
+    return this.service.uploadFile(folderId, file, type || DocumentType.OUTRO, userId, expiresAt);
   }
 
   @Get('dossier/files/:fileId/download')
