@@ -112,7 +112,7 @@ export function Sidebar() {
         <Link href="/dashboard" className="flex items-center gap-3">
           <div className="flex items-center justify-center rounded-lg bg-white px-2 py-1.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" alt="SCNET" className="h-6 w-auto" />
+            <img src="/logo.webp" alt="SCNET" className="h-6 w-auto" />
           </div>
           <div>
             <p className="font-semibold text-sm text-white">SC Office</p>
