@@ -33,18 +33,32 @@ export class AuthService {
       where: { email: dto.email, deletedAt: null },
     });
 
-    if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
+    if (!user) {
       await this.auditService.log({
         action: 'LOGIN',
         module: 'auth',
         entityType: 'user',
-        entityId: user?.id,
         ipAddress,
         userAgent,
         success: false,
-        description: `Tentativa de login falhou para: ${dto.email}`,
+        description: `Tentativa de login com e-mail inexistente: ${dto.email}`,
       });
-      throw new UnauthorizedException('Credenciais inválidas');
+      throw new UnauthorizedException('Não existe conta com este e-mail');
+    }
+
+    const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!passwordValid) {
+      await this.auditService.log({
+        action: 'LOGIN',
+        module: 'auth',
+        entityType: 'user',
+        entityId: user.id,
+        ipAddress,
+        userAgent,
+        success: false,
+        description: `Senha incorreta para: ${dto.email}`,
+      });
+      throw new UnauthorizedException('Senha incorreta');
     }
 
     if (user.status !== 'ACTIVE') {
