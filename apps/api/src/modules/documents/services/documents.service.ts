@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnprocessableEntityException,
+  Logger,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
@@ -44,6 +45,8 @@ export interface PreviewResult {
 
 @Injectable()
 export class DocumentsService {
+  private readonly logger = new Logger(DocumentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly minio: MinioService,
@@ -68,7 +71,6 @@ export class DocumentsService {
       this.customFields.buildVariablesMap(employeeId),
     ]);
 
-    // Company variables
     const company = await this.prisma.company.findFirst();
     const companyVars: Record<string, string> = company
       ? {
@@ -84,7 +86,6 @@ export class DocumentsService {
         }
       : {};
 
-    // Date variables
     const now = new Date();
     const dateVars: Record<string, string> = {
       'data.hoje': now.toLocaleDateString('pt-BR'),
@@ -97,8 +98,6 @@ export class DocumentsService {
     };
 
     const baseVars = { ...employeeVars, ...companyVars, ...dateVars, ...customVars, ...(additionalVariables || {}) };
-
-    // Computed/calculated fields derived from base vars
     const calculatedVars = this.engine.computeCalculatedVariables(baseVars);
 
     return { ...baseVars, ...calculatedVars };
@@ -125,7 +124,6 @@ export class DocumentsService {
     if (template.format === TemplateFormat.HTML) {
       html = this.engine.renderHtml(template.htmlContent!, allVariables);
     } else {
-      // For DOCX, return a simplified HTML preview with variable substitution shown
       html = this.buildDocxPreviewHtml(allVariables, template.variables as any[]);
     }
 
@@ -175,7 +173,7 @@ export class DocumentsService {
 
     const allVariables = await this.buildVariables(dto.employeeId, dto.additionalVariables);
 
-    // Build employee snapshot (frozen at generation time)
+    // Build employee snapshot — null-safe (position/department may not be set)
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: {
@@ -183,14 +181,16 @@ export class DocumentsService {
         position: { select: { title: true } },
       },
     });
+    if (!employee) throw new NotFoundException('Funcionário não encontrado');
+
     const employeeSnapshot = {
-      id: employee!.id,
-      fullName: employee!.fullName,
-      cpf: employee!.cpf,
-      matricula: employee!.matricula,
-      position: employee!.position.title,
-      department: employee!.department.name,
-      admissionDate: employee!.admissionDate,
+      id: employee.id,
+      fullName: employee.fullName,
+      cpf: employee.cpf,
+      matricula: employee.matricula,
+      position: employee.position?.title ?? '',
+      department: employee.department?.name ?? '',
+      admissionDate: employee.admissionDate,
       snapshotAt: new Date().toISOString(),
     };
 
@@ -217,9 +217,9 @@ export class DocumentsService {
       extension = 'html';
     }
 
-    const docName = dto.name || `${template.name} - ${employee!.fullName} - ${new Date().toLocaleDateString('pt-BR')}`;
+    const docName = dto.name || `${template.name} - ${employee.fullName} - ${new Date().toLocaleDateString('pt-BR')}`;
 
-    // Upload generated document
+    // Upload generated document to MinIO
     const uploadResult = await this.minio.uploadFile(
       this.minio.getBucketName('documents'),
       generatedBuffer,
@@ -240,7 +240,7 @@ export class DocumentsService {
       },
     });
 
-    // Find the current template version for snapshot reference
+    // Pin to current template version
     const currentVersion = await this.prisma.templateVersion.findFirst({
       where: { templateId: dto.templateId },
       orderBy: { version: 'desc' },
@@ -281,13 +281,17 @@ export class DocumentsService {
       data: { usageCount: { increment: 1 } },
     });
 
-    // Queue PDF generation
-    await this.pdfQueue.add('generate-pdf', {
-      documentId: document.id,
-      format: template.format,
-      fileStorageId: fileStorage.id,
-      userId,
-    });
+    // Queue PDF generation — non-blocking so a Redis issue doesn't fail the generation
+    try {
+      await this.pdfQueue.add('generate-pdf', {
+        documentId: document.id,
+        format: template.format,
+        fileStorageId: fileStorage.id,
+        userId,
+      });
+    } catch (err) {
+      this.logger.warn(`PDF queue unavailable — document generated but PDF not queued: ${(err as Error).message}`);
+    }
 
     await this.audit.log({
       userId,
@@ -396,7 +400,8 @@ export class DocumentsService {
     variables: Record<string, string>,
     templateVars: Array<{ path: string; name: string }>,
   ): string {
-    const rows = templateVars.map((v) => {
+    const vars = Array.isArray(templateVars) ? templateVars : [];
+    const rows = vars.map((v) => {
       const value = variables[v.path] || '';
       const status = value
         ? `<span style="color:#16a34a">✓</span>`
