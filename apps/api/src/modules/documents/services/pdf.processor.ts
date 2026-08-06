@@ -2,6 +2,7 @@ import { Processor, Process } from '@nestjs/bull';
 import { Job } from 'bull';
 import { Logger } from '@nestjs/common';
 import * as puppeteer from 'puppeteer';
+import * as mammoth from 'mammoth';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import { MinioService } from '../../../infrastructure/minio/minio.service';
 import { TemplateEngineService } from '../../templates/engines/template-engine.service';
@@ -38,8 +39,6 @@ export class PdfProcessor {
         );
         htmlContent = fileBuffer.toString('utf-8');
       } else {
-        // For DOCX, render to HTML first then PDF
-        // In production, use LibreOffice or similar for DOCX->PDF
         htmlContent = await this.convertDocxToHtml(
           document.fileStorage!.bucket,
           document.fileStorage!.key,
@@ -73,17 +72,50 @@ export class PdfProcessor {
         data: { pdfStorageId: pdfStorage.id },
       });
 
-      this.logger.log(`PDF generated for document ${documentId}`);
+      this.logger.log(`PDF gerado para documento ${documentId}`);
     } catch (error) {
-      this.logger.error(`Failed to generate PDF for document ${documentId}:`, error);
+      this.logger.error(`Falha ao gerar PDF para documento ${documentId}:`, error);
       throw error;
     }
+  }
+
+  private async convertDocxToHtml(bucket: string, key: string): Promise<string> {
+    const buffer = await this.minio.getObject(bucket, key);
+
+    const result = await mammoth.convertToHtml(
+      { buffer },
+      {
+        styleMap: [
+          "p[style-name='Heading 1'] => h1:fresh",
+          "p[style-name='Heading 2'] => h2:fresh",
+          "p[style-name='Heading 3'] => h3:fresh",
+          "p[style-name='Title'] => h1:fresh",
+          "r[style-name='Strong'] => strong",
+          "r[style-name='Emphasis'] => em",
+        ],
+        convertImage: mammoth.images.imgElement((image) =>
+          image.read('base64').then((data) => ({
+            src: `data:${image.contentType};base64,${data}`,
+          }))
+        ),
+      },
+    );
+
+    if (result.messages.length > 0) {
+      const warnings = result.messages
+        .filter((m) => m.type === 'warning')
+        .map((m) => m.message)
+        .join('; ');
+      if (warnings) this.logger.warn(`mammoth: ${warnings}`);
+    }
+
+    return result.value;
   }
 
   private async generatePdfFromHtml(html: string, title: string): Promise<Buffer> {
     const browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
 
     try {
@@ -95,11 +127,11 @@ export class PdfProcessor {
       const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,
-        margin: { top: '20mm', right: '20mm', bottom: '20mm', left: '20mm' },
+        margin: { top: '25mm', right: '20mm', bottom: '25mm', left: '25mm' },
         displayHeaderFooter: true,
-        headerTemplate: `<div style="font-size:9px;width:100%;text-align:center;color:#666;">${title}</div>`,
+        headerTemplate: `<div style="font-size:8px;width:100%;text-align:center;color:#999;font-family:Arial,sans-serif;padding:0 20mm">${title}</div>`,
         footerTemplate: `
-          <div style="font-size:9px;width:100%;text-align:center;color:#666;">
+          <div style="font-size:8px;width:100%;text-align:center;color:#999;font-family:Arial,sans-serif;padding:0 20mm">
             Página <span class="pageNumber"></span> de <span class="totalPages"></span>
           </div>`,
       });
@@ -111,36 +143,60 @@ export class PdfProcessor {
   }
 
   private wrapWithStyles(html: string, title: string): string {
-    // If html already has a full structure, return as-is
     if (html.includes('<html')) return html;
 
     return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Arial', sans-serif; font-size: 12pt; line-height: 1.6; color: #333; }
-    h1 { font-size: 18pt; margin-bottom: 16px; }
-    h2 { font-size: 14pt; margin-bottom: 12px; }
-    p { margin-bottom: 8px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background: #f5f5f5; font-weight: bold; }
+    body {
+      font-family: 'Arial', 'Helvetica', sans-serif;
+      font-size: 12pt;
+      line-height: 1.6;
+      color: #222;
+    }
+    h1 { font-size: 16pt; margin: 16px 0 10px; }
+    h2 { font-size: 14pt; margin: 14px 0 8px; }
+    h3 { font-size: 12pt; margin: 12px 0 6px; }
+    p { margin-bottom: 8px; text-align: justify; }
+    strong { font-weight: bold; }
+    em { font-style: italic; }
+    u { text-decoration: underline; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+      font-size: 11pt;
+    }
+    th, td {
+      border: 1px solid #aaa;
+      padding: 6px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f0f0f0; font-weight: bold; }
+    ul, ol { margin: 8px 0 8px 24px; }
+    li { margin-bottom: 4px; }
+    img { max-width: 100%; height: auto; }
     .page-break { page-break-after: always; }
-    .signature-line { border-top: 1px solid #333; margin-top: 40px; padding-top: 8px; text-align: center; }
+    .signature-block {
+      margin-top: 48px;
+      display: flex;
+      justify-content: space-around;
+    }
+    .signature-line {
+      border-top: 1px solid #333;
+      width: 200px;
+      padding-top: 6px;
+      text-align: center;
+      font-size: 10pt;
+    }
   </style>
 </head>
 <body>${html}</body>
 </html>`;
-  }
-
-  private async convertDocxToHtml(bucket: string, key: string): Promise<string> {
-    // Simplified: in production use mammoth or LibreOffice
-    const buffer = await this.minio.getObject(bucket, key);
-    // Placeholder - integrate mammoth.js for real conversion
-    return `<p>Documento gerado a partir de DOCX. Implementar conversão completa com mammoth.js.</p>`;
   }
 }
