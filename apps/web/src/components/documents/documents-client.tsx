@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { FolderOpen, Download, FilePlus } from 'lucide-react';
+import { FolderOpen, Download, FilePlus, FileText } from 'lucide-react';
 import { api } from '../../lib/api';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -18,6 +18,7 @@ interface GeneratedDocument {
   createdAt: string;
   template?: { name: string; format: string } | null;
   employee?: { fullName: string; matricula: string } | null;
+  pdfStorage?: { id: string } | null;
 }
 
 const unwrap = (resp: any): GeneratedDocument[] =>
@@ -39,20 +40,26 @@ export function DocumentsClient() {
   });
   const documents = unwrap(data);
 
-  const handleDownload = async (doc: GeneratedDocument) => {
-    setDownloading(doc.id);
+  const handleDownload = async (doc: GeneratedDocument, format: 'source' | 'pdf') => {
+    const key = `${doc.id}-${format}`;
+    setDownloading(key);
     try {
-      const blob: any = await api.get(`/documents/${doc.id}/download?format=pdf`, { responseType: 'blob' });
-      const url = URL.createObjectURL(blob);
+      const ext = format === 'pdf' ? 'pdf' : 'docx';
+      const blob: any = await api.get(`/documents/${doc.id}/download?format=${format}`, { responseType: 'blob' });
+      const url = URL.createObjectURL(blob.data ?? blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${doc.name || doc.template?.name || 'documento'}.pdf`;
+      a.download = `${doc.name || doc.template?.name || 'documento'}.${ext}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
     } catch {
-      toast.error('Erro ao baixar o documento');
+      if (format === 'pdf') {
+        toast.error('PDF ainda sendo processado. Baixe o Word enquanto aguarda.');
+      } else {
+        toast.error('Erro ao baixar o documento');
+      }
     } finally {
       setDownloading(null);
     }
@@ -83,7 +90,7 @@ export function DocumentsClient() {
                 <TableHead>Modelo</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Data</TableHead>
-                <TableHead className="w-28" />
+                <TableHead className="w-40" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -103,10 +110,30 @@ export function DocumentsClient() {
                     {new Date(doc.createdAt).toLocaleDateString('pt-BR')}
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm" disabled={downloading === doc.id} onClick={() => handleDownload(doc)}>
-                      <Download className="h-4 w-4 mr-1" />
-                      {downloading === doc.id ? '...' : 'PDF'}
-                    </Button>
+                    <div className="flex gap-1">
+                      {/* Word download — always available right after generation */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        title="Baixar Word (.docx)"
+                        disabled={downloading === `${doc.id}-source`}
+                        onClick={() => handleDownload(doc, 'source')}
+                      >
+                        <FileText className="h-4 w-4 mr-1" />
+                        {downloading === `${doc.id}-source` ? '...' : 'Word'}
+                      </Button>
+                      {/* PDF download — available after async processing */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title={doc.pdfStorage ? 'Baixar PDF' : 'PDF sendo processado...'}
+                        disabled={downloading === `${doc.id}-pdf`}
+                        onClick={() => handleDownload(doc, 'pdf')}
+                      >
+                        <Download className="h-4 w-4 mr-1" />
+                        {downloading === `${doc.id}-pdf` ? '...' : 'PDF'}
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
