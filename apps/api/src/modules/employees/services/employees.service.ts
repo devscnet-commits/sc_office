@@ -229,24 +229,23 @@ export class EmployeesService {
   async getVariables(id: string) {
     const employee = await this.findOne(id);
 
-    // Build the variables map used by the template engine
     return {
       'funcionario.nome': employee.fullName,
       'funcionario.nome_social': employee.socialName || employee.fullName,
       'funcionario.cpf': employee.cpf,
       'funcionario.rg': employee.rg || '',
-      'funcionario.email': employee.email,
+      'funcionario.email': employee.email || '',
       'funcionario.telefone': employee.phone || '',
       'funcionario.celular': employee.cellphone || '',
       'funcionario.data_nascimento': employee.birthDate
         ? new Date(employee.birthDate).toLocaleDateString('pt-BR')
         : '',
-      'funcionario.genero': employee.gender,
-      'funcionario.estado_civil': employee.maritalStatus,
-      'funcionario.nacionalidade': employee.nationality,
+      'funcionario.genero': employee.gender || '',
+      'funcionario.estado_civil': employee.maritalStatus || '',
+      'funcionario.nacionalidade': employee.nationality || '',
       'funcionario.matricula': employee.matricula,
-      'funcionario.cargo': employee.position.title,
-      'funcionario.setor': employee.department.name,
+      'funcionario.cargo': employee.position?.title ?? '',
+      'funcionario.setor': employee.department?.name ?? '',
       'funcionario.data_admissao': employee.admissionDate
         ? new Date(employee.admissionDate).toLocaleDateString('pt-BR')
         : '',
@@ -325,13 +324,17 @@ export class EmployeesService {
       { name: 'Histórico', order: 8 },
     ];
 
-    await this.prisma.dossierFolder.createMany({
-      data: folders.map((f) => ({
-        ...f,
-        employeeId,
-        type: 'SYSTEM',
-        isSystem: true,
-      })),
-    });
+    try {
+      await this.prisma.dossierFolder.createMany({
+        data: folders.map((f) => ({
+          ...f,
+          employeeId,
+          type: 'SYSTEM',
+          isSystem: true,
+        })),
+      });
+    } catch {
+      // dossier table may not exist yet — skip
+    }
   }
 }

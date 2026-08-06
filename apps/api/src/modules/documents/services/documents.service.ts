@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnprocessableEntityException,
+  InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
@@ -152,6 +153,20 @@ export class DocumentsService {
   // ============================================================
 
   async generate(dto: GenerateDocumentDto, userId: string) {
+    try {
+      return await this._generate(dto, userId);
+    } catch (err: any) {
+      // Re-throw known HTTP exceptions as-is
+      if (err?.status && err.status < 500) throw err;
+      // For unexpected errors, log and expose the real message so the front-end can show it
+      this.logger.error('generate failed', err?.stack || err);
+      throw new InternalServerErrorException(
+        `Erro ao gerar documento: ${err?.message ?? 'erro desconhecido'}`,
+      );
+    }
+  }
+
+  private async _generate(dto: GenerateDocumentDto, userId: string) {
     const template = await this.prisma.template.findUnique({
       where: { id: dto.templateId },
       include: { fileStorage: true },
@@ -247,12 +262,16 @@ export class DocumentsService {
     });
 
     // Auto-resolve dossier folder: use provided or find "Contratos" system folder
-    let resolvedDossierFolderId = dto.dossierFolderId;
+    let resolvedDossierFolderId: string | undefined = dto.dossierFolderId;
     if (!resolvedDossierFolderId) {
-      const contratosFolder = await this.prisma.dossierFolder.findFirst({
-        where: { employeeId: dto.employeeId, name: 'Contratos', isSystem: true },
-      });
-      resolvedDossierFolderId = contratosFolder?.id;
+      try {
+        const contratosFolder = await this.prisma.dossierFolder.findFirst({
+          where: { employeeId: dto.employeeId, name: 'Contratos', isSystem: true },
+        });
+        resolvedDossierFolderId = contratosFolder?.id;
+      } catch {
+        // dossierFolder table may not exist yet — skip auto-archive
+      }
     }
 
     const document = await this.prisma.generatedDocument.create({
@@ -265,7 +284,7 @@ export class DocumentsService {
         variables: allVariables as any,
         employeeSnapshot: employeeSnapshot as any,
         fileStorageId: fileStorage.id,
-        dossierFolderId: resolvedDossierFolderId,
+        ...(resolvedDossierFolderId ? { dossierFolderId: resolvedDossierFolderId } : {}),
         createdBy: userId,
         notes: dto.notes,
       },
