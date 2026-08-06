@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as Minio from 'minio';
 import { createId } from '@paralleldrive/cuid2';
 import * as crypto from 'crypto';
+import * as dns from 'dns/promises';
 
 export interface UploadResult {
   bucket: string;
@@ -25,8 +26,21 @@ export class MinioService implements OnModuleInit {
     this.buckets = this.configService.get('storage.buckets')!;
     this.region = config.region || 'us-east-1';
 
+    // MinIO SDK validates hostnames with RFC-1123 — underscores are rejected.
+    // Resolve to IP first when the configured endpoint contains underscores.
+    let endPoint: string = config.endPoint;
+    if (endPoint.includes('_')) {
+      try {
+        const [ip] = await dns.resolve4(endPoint);
+        this.logger.log(`MinIO: ${endPoint} → ${ip}`);
+        endPoint = ip;
+      } catch (err: any) {
+        this.logger.warn(`MinIO: nao foi possivel resolver ${endPoint}: ${err?.message}`);
+      }
+    }
+
     this.client = new Minio.Client({
-      endPoint: config.endPoint,
+      endPoint,
       port: config.port,
       useSSL: config.useSSL,
       accessKey: config.accessKey,
@@ -34,11 +48,10 @@ export class MinioService implements OnModuleInit {
       region: this.region,
     });
 
-    // A inicialização dos buckets NUNCA deve derrubar a aplicação.
     try {
       await this.initializeBuckets();
     } catch (err: any) {
-      this.logger.warn(`MinIO: inicialização de buckets falhou (a aplicação continua): ${err?.message || err}`);
+      this.logger.warn(`MinIO: inicializacao de buckets falhou (a aplicacao continua): ${err?.message || err}`);
     }
   }
 
@@ -46,8 +59,6 @@ export class MinioService implements OnModuleInit {
     for (const [, bucketName] of Object.entries(this.buckets)) {
       const name = bucketName as string;
 
-      // Algumas versões do cliente lançam erro quando o bucket não existe
-      // (ex.: primeiro boot). Tratamos como inexistente e tentamos criar.
       let exists = false;
       try {
         exists = await this.client.bucketExists(name);
@@ -62,9 +73,9 @@ export class MinioService implements OnModuleInit {
       } catch (err: any) {
         const code = err?.code || '';
         if (code === 'BucketAlreadyOwnedByYou' || code === 'BucketAlreadyExists') {
-          // bucket já existe — tudo certo
+          // bucket ja existe
         } else {
-          this.logger.warn(`MinIO: não foi possível criar o bucket ${name}: ${err?.message || code || err}`);
+          this.logger.warn(`MinIO: nao foi possivel criar o bucket ${name}: ${err?.message || code || err}`);
         }
       }
     }
