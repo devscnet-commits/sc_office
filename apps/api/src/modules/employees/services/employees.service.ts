@@ -10,7 +10,34 @@ import {
   UpdateEmployeeDto,
   EmployeeFilterDto,
 } from '../dto/create-employee.dto';
-import { createId } from '@paralleldrive/cuid2';
+
+// ----------------------------------------------------------------
+// Gender conjugation helpers
+// ----------------------------------------------------------------
+
+const MARITAL_STATUS: Record<string, { m: string; f: string }> = {
+  SOLTEIRO:      { m: 'solteiro',     f: 'solteira' },
+  CASADO:        { m: 'casado',       f: 'casada' },
+  DIVORCIADO:    { m: 'divorciado',   f: 'divorciada' },
+  VIUVO:         { m: 'viúvo',         f: 'viúva' },
+  UNIAO_ESTAVEL: { m: 'união estável', f: 'união estável' },
+  OUTRO:         { m: 'outro',        f: 'outra' },
+};
+
+function conjugate(
+  value: string | null | undefined,
+  map: Record<string, { m: string; f: string }>,
+  gender: string | null | undefined,
+): string {
+  if (!value) return '';
+  const entry = map[value.toUpperCase()];
+  if (!entry) return value.toLowerCase();
+  return gender === 'FEMININO' ? entry.f : entry.m;
+}
+
+function genderWord(masculine: string, feminine: string, gender: string | null | undefined): string {
+  return gender === 'FEMININO' ? feminine : masculine;
+}
 
 @Injectable()
 export class EmployeesService {
@@ -23,10 +50,7 @@ export class EmployeesService {
     const existing = await this.prisma.employee.findFirst({
       where: { cpf: dto.cpf },
     });
-
-    if (existing) {
-      throw new ConflictException('CPF já cadastrado no sistema');
-    }
+    if (existing) throw new ConflictException('CPF já cadastrado no sistema');
 
     const matricula = await this.generateMatricula();
 
@@ -88,7 +112,6 @@ export class EmployeesService {
       },
     });
 
-    // Create default dossier folders
     await this.createDefaultDossierFolders(employee.id);
 
     await this.auditService.log({
@@ -105,9 +128,7 @@ export class EmployeesService {
 
   async findAll(filter: EmployeeFilterDto) {
     const { search, status, departmentId, positionId, page = 1, limit = 20, sortBy = 'fullName', sortOrder = 'asc' } = filter;
-
     const where: any = {};
-
     if (search) {
       where.OR = [
         { fullName: { contains: search, mode: 'insensitive' } },
@@ -116,7 +137,6 @@ export class EmployeesService {
         { matricula: { contains: search } },
       ];
     }
-
     if (status) where.status = status;
     if (departmentId) where.departmentId = departmentId;
     if (positionId) where.positionId = positionId;
@@ -135,15 +155,7 @@ export class EmployeesService {
       }),
     ]);
 
-    return {
-      data: employees,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+    return { data: employees, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
   async findOne(id: string) {
@@ -163,22 +175,16 @@ export class EmployeesService {
         },
       },
     });
-
     if (!employee) throw new NotFoundException('Funcionário não encontrado');
-
     return employee;
   }
 
   async update(id: string, dto: UpdateEmployeeDto, userId: string) {
     const existing = await this.findOne(id);
-
     if (dto.cpf && dto.cpf !== existing.cpf) {
-      const cpfExists = await this.prisma.employee.findFirst({
-        where: { cpf: dto.cpf },
-      });
+      const cpfExists = await this.prisma.employee.findFirst({ where: { cpf: dto.cpf } });
       if (cpfExists) throw new ConflictException('CPF já cadastrado para outro funcionário');
     }
-
     const updated = await this.prisma.employee.update({
       where: { id },
       data: {
@@ -193,7 +199,6 @@ export class EmployeesService {
         position: { select: { id: true, title: true } },
       },
     });
-
     await this.auditService.log({
       userId,
       action: 'UPDATE',
@@ -203,18 +208,12 @@ export class EmployeesService {
       oldValues: { status: existing.status },
       newValues: { status: dto.status },
     });
-
     return updated;
   }
 
   async remove(id: string, userId: string) {
     await this.findOne(id);
-
-    await this.prisma.employee.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    });
-
+    await this.prisma.employee.update({ where: { id }, data: { deletedAt: new Date() } });
     await this.auditService.log({
       userId,
       action: 'DELETE',
@@ -222,66 +221,82 @@ export class EmployeesService {
       entityType: 'employee',
       entityId: id,
     });
-
     return { message: 'Funcionário removido com sucesso' };
   }
 
   async getVariables(id: string) {
     const employee = await this.findOne(id);
+    const g = employee.gender;
+
+    // Gender-conjugated helpers
+    const estadoCivil = conjugate(employee.maritalStatus, MARITAL_STATUS, g);
+    const portador    = genderWord('portador', 'portadora', g);
+    const brasileiro  = genderWord('brasileiro', 'brasileira', g);
+    const admitido    = genderWord('admitido', 'admitida', g);
+    const domiciliado = genderWord('domiciliado', 'domiciliada', g);
+    const residente   = genderWord('residente e domiciliado', 'residente e domiciliada', g);
+    const artigo      = genderWord('o', 'a', g);
+    const artigoUpper = genderWord('O', 'A', g);
 
     return {
-      'funcionario.nome': employee.fullName,
-      'funcionario.nome_social': employee.socialName || employee.fullName,
-      'funcionario.cpf': employee.cpf,
-      'funcionario.rg': employee.rg || '',
-      'funcionario.email': employee.email || '',
-      'funcionario.telefone': employee.phone || '',
-      'funcionario.celular': employee.cellphone || '',
-      'funcionario.data_nascimento': employee.birthDate
-        ? new Date(employee.birthDate).toLocaleDateString('pt-BR')
-        : '',
-      'funcionario.genero': employee.gender || '',
-      'funcionario.estado_civil': employee.maritalStatus || '',
-      'funcionario.nacionalidade': employee.nationality || '',
-      'funcionario.matricula': employee.matricula,
-      'funcionario.cargo': employee.position?.title ?? '',
-      'funcionario.setor': employee.department?.name ?? '',
-      'funcionario.data_admissao': employee.admissionDate
-        ? new Date(employee.admissionDate).toLocaleDateString('pt-BR')
-        : '',
-      'funcionario.data_demissao': employee.terminationDate
-        ? new Date(employee.terminationDate).toLocaleDateString('pt-BR')
-        : '',
-      'funcionario.endereco': this.buildAddress(employee),
-      'funcionario.cep': employee.zipCode || '',
-      'funcionario.rua': employee.street || '',
-      'funcionario.numero': employee.number || '',
-      'funcionario.complemento': employee.complement || '',
-      'funcionario.bairro': employee.neighborhood || '',
-      'funcionario.cidade': employee.city || '',
-      'funcionario.estado': employee.state || '',
-      'funcionario.banco': employee.bankName || '',
-      'funcionario.agencia': employee.bankAgency || '',
-      'funcionario.conta': employee.bankAccount || '',
-      'funcionario.pix': employee.bankPix || '',
-      'funcionario.pis': employee.pis || '',
-      'funcionario.ctps': employee.ctps || '',
-      'funcionario.ctps_serie': employee.ctpsSerie || '',
-      'funcionario.ctps_estado': employee.ctpsState || '',
-      'funcionario.orgao_emissor': employee.rgIssuingBody || '',
-      'funcionario.rg_estado': employee.rgState || '',
-      'funcionario.raca': employee.race || '',
-      'funcionario.grau_instrucao': employee.educationLevel || '',
-      'funcionario.tipo_sanguineo': employee.bloodType || '',
-      'funcionario.filhos': employee.children || '',
-      'funcionario.contato_emergencia': employee.emergencyContact || '',
+      // Pessoal
+      'funcionario.nome':              employee.fullName,
+      'funcionario.nome_social':       employee.socialName || employee.fullName,
+      'funcionario.cpf':               employee.cpf,
+      'funcionario.rg':                employee.rg || '',
+      'funcionario.email':             employee.email || '',
+      'funcionario.telefone':          employee.phone || '',
+      'funcionario.celular':           employee.cellphone || '',
+      'funcionario.data_nascimento':   employee.birthDate ? new Date(employee.birthDate).toLocaleDateString('pt-BR') : '',
+      'funcionario.genero':            g || '',
+      // Estado civil conjugado automaticamente pelo gênero
+      'funcionario.estado_civil':      estadoCivil,
+      'funcionario.estado_civil_m':    conjugate(employee.maritalStatus, MARITAL_STATUS, 'MASCULINO'),
+      'funcionario.estado_civil_f':    conjugate(employee.maritalStatus, MARITAL_STATUS, 'FEMININO'),
+      // Artigos e palavras genêricas úteis em contratos
+      'funcionario.portador':          portador,            // portador / portadora
+      'funcionario.admitido':          admitido,            // admitido / admitida
+      'funcionario.domiciliado':       domiciliado,         // domiciliado / domiciliada
+      'funcionario.residente':         residente,           // residente e domiciliado/a
+      'funcionario.o_a':               artigo,              // o / a
+      'funcionario.O_A':               artigoUpper,         // O / A
+      'funcionario.brasileiro_a':      brasileiro,          // brasileiro / brasileira
+      'funcionario.nacionalidade':     employee.nationality || '',
+      'funcionario.matricula':         employee.matricula,
+      'funcionario.cargo':             employee.position?.title ?? '',
+      'funcionario.setor':             employee.department?.name ?? '',
+      'funcionario.data_admissao':     employee.admissionDate ? new Date(employee.admissionDate).toLocaleDateString('pt-BR') : '',
+      'funcionario.data_demissao':     employee.terminationDate ? new Date(employee.terminationDate).toLocaleDateString('pt-BR') : '',
+      'funcionario.endereco':          this.buildAddress(employee),
+      'funcionario.cep':               employee.zipCode || '',
+      'funcionario.rua':               employee.street || '',
+      'funcionario.numero':            employee.number || '',
+      'funcionario.complemento':       employee.complement || '',
+      'funcionario.bairro':            employee.neighborhood || '',
+      'funcionario.cidade':            employee.city || '',
+      'funcionario.estado':            employee.state || '',
+      'funcionario.banco':             employee.bankName || '',
+      'funcionario.agencia':           employee.bankAgency || '',
+      'funcionario.conta':             employee.bankAccount || '',
+      'funcionario.pix':               employee.bankPix || '',
+      'funcionario.pis':               employee.pis || '',
+      'funcionario.ctps':              employee.ctps || '',
+      'funcionario.ctps_serie':        employee.ctpsSerie || '',
+      'funcionario.ctps_estado':       employee.ctpsState || '',
+      'funcionario.orgao_emissor':     employee.rgIssuingBody || '',
+      'funcionario.rg_estado':         employee.rgState || '',
+      'funcionario.raca':              employee.race || '',
+      'funcionario.grau_instrucao':    employee.educationLevel || '',
+      'funcionario.tipo_sanguineo':    employee.bloodType || '',
+      'funcionario.filhos':            employee.children || '',
+      'funcionario.contato_emergencia':  employee.emergencyContact || '',
       'funcionario.telefone_emergencia': employee.emergencyPhone || '',
-      'funcionario.uniforme_camisa': employee.uniformShirt || '',
+      'funcionario.uniforme_camisa':   employee.uniformShirt || '',
       'funcionario.uniforme_camiseta': employee.uniformTShirt || '',
-      'funcionario.uniforme_calca': employee.uniformPants || '',
-      'funcionario.uniforme_jaqueta': employee.uniformJacket || '',
-      'funcionario.uniforme_casaco': employee.uniformCoat || '',
-      'funcionario.uniforme_botina': employee.bootSize || '',
+      'funcionario.uniforme_calca':    employee.uniformPants || '',
+      'funcionario.uniforme_jaqueta':  employee.uniformJacket || '',
+      'funcionario.uniforme_casaco':   employee.uniformCoat || '',
+      'funcionario.uniforme_botina':   employee.bootSize || '',
     };
   }
 
@@ -304,11 +319,7 @@ export class EmployeesService {
       where: { matricula: { startsWith: year } },
       orderBy: { matricula: 'desc' },
     });
-
-    const seq = last
-      ? parseInt(last.matricula.slice(2), 10) + 1
-      : 1;
-
+    const seq = last ? parseInt(last.matricula.slice(2), 10) + 1 : 1;
     return `${year}${seq.toString().padStart(5, '0')}`;
   }
 
@@ -323,18 +334,12 @@ export class EmployeesService {
       { name: 'Rescisão', order: 7 },
       { name: 'Histórico', order: 8 },
     ];
-
     try {
       await this.prisma.dossierFolder.createMany({
-        data: folders.map((f) => ({
-          ...f,
-          employeeId,
-          type: 'SYSTEM',
-          isSystem: true,
-        })),
+        data: folders.map((f) => ({ ...f, employeeId, type: 'SYSTEM', isSystem: true })),
       });
     } catch {
-      // dossier table may not exist yet — skip
+      // dossier table may not exist yet
     }
   }
 }

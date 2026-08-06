@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as Docxtemplater from 'docxtemplater';
 import * as PizZip from 'pizzip';
 import * as Handlebars from 'handlebars';
-import { addDays, differenceInDays, differenceInYears, format, formatDistanceToNow } from 'date-fns';
+import { addDays, differenceInYears, format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 export interface VariableInfo {
@@ -20,80 +20,91 @@ export interface RenderResult {
 
 export const KNOWN_VARIABLES: Record<string, string> = {
   // Funcionário - Pessoal
-  'funcionario.nome': 'Nome completo do funcionário',
-  'funcionario.nome_social': 'Nome social do funcionário',
-  'funcionario.cpf': 'CPF do funcionário',
-  'funcionario.rg': 'RG do funcionário',
-  'funcionario.email': 'Email do funcionário',
-  'funcionario.telefone': 'Telefone fixo',
-  'funcionario.celular': 'Celular',
-  'funcionario.data_nascimento': 'Data de nascimento',
-  'funcionario.genero': 'Gênero',
-  'funcionario.estado_civil': 'Estado civil',
-  'funcionario.nacionalidade': 'Nacionalidade',
+  'funcionario.nome':               'Nome completo do funcionário',
+  'funcionario.nome_social':        'Nome social do funcionário',
+  'funcionario.cpf':                'CPF do funcionário',
+  'funcionario.rg':                 'RG do funcionário',
+  'funcionario.email':              'Email do funcionário',
+  'funcionario.telefone':           'Telefone fixo',
+  'funcionario.celular':            'Celular',
+  'funcionario.data_nascimento':    'Data de nascimento',
+  'funcionario.genero':             'Gênero (MASCULINO / FEMININO)',
+  'funcionario.nacionalidade':      'Nacionalidade',
+  // Estado civil — conjugado automaticamente pelo gênero
+  'funcionario.estado_civil':       'Estado civil conjugado pelo gênero (ex: casada, solteiro)',
+  'funcionario.estado_civil_m':     'Estado civil sempre no masculino (ex: casado)',
+  'funcionario.estado_civil_f':     'Estado civil sempre no feminino (ex: casada)',
+  // Artigos e palavras genéricas úteis em contratos
+  'funcionario.portador':           'portador ou portadora (conforme gênero)',
+  'funcionario.admitido':           'admitido ou admitida (conforme gênero)',
+  'funcionario.domiciliado':        'domiciliado ou domiciliada (conforme gênero)',
+  'funcionario.residente':          'residente e domiciliado/a (conforme gênero)',
+  'funcionario.o_a':                'artigo: o ou a (conforme gênero)',
+  'funcionario.O_A':                'artigo maiúsculo: O ou A (conforme gênero)',
+  'funcionario.brasileiro_a':       'brasileiro ou brasileira (conforme gênero)',
   // Funcionário - Profissional
-  'funcionario.matricula': 'Matrícula',
-  'funcionario.cargo': 'Cargo',
-  'funcionario.setor': 'Setor/Departamento',
-  'funcionario.data_admissao': 'Data de admissão',
-  'funcionario.data_demissao': 'Data de demissão',
+  'funcionario.matricula':          'Matrícula',
+  'funcionario.cargo':              'Cargo',
+  'funcionario.setor':              'Setor/Departamento',
+  'funcionario.data_admissao':      'Data de admissão',
+  'funcionario.data_demissao':      'Data de demissão',
   // Funcionário - Calculados
-  'funcionario.fim_experiencia': 'Fim do período de experiência (admissão + 90 dias)',
+  'funcionario.fim_experiencia':            'Fim do período de experiência (admissão + 90 dias)',
   'funcionario.fim_experiencia_prorrogada': 'Fim da prorrogação (admissão + 180 dias)',
-  'funcionario.anos_empresa': 'Anos de empresa',
-  'funcionario.tempo_empresa': 'Tempo de empresa por extenso',
-  'funcionario.idade': 'Idade atual',
+  'funcionario.anos_empresa':       'Anos de empresa',
+  'funcionario.tempo_empresa':      'Tempo de empresa por extenso',
+  'funcionario.idade':              'Idade atual',
   // Funcionário - Endereço
-  'funcionario.endereco': 'Endereço completo',
-  'funcionario.cep': 'CEP',
-  'funcionario.rua': 'Rua',
-  'funcionario.numero': 'Número',
-  'funcionario.complemento': 'Complemento',
-  'funcionario.bairro': 'Bairro',
-  'funcionario.cidade': 'Cidade',
-  'funcionario.estado': 'Estado (UF)',
+  'funcionario.endereco':           'Endereço completo',
+  'funcionario.cep':                'CEP',
+  'funcionario.rua':                'Rua',
+  'funcionario.numero':             'Número',
+  'funcionario.complemento':        'Complemento',
+  'funcionario.bairro':             'Bairro',
+  'funcionario.cidade':             'Cidade',
+  'funcionario.estado':             'Estado (UF)',
   // Funcionário - Bancário
-  'funcionario.banco': 'Nome do banco',
-  'funcionario.agencia': 'Agência bancária',
-  'funcionario.conta': 'Conta bancária',
-  'funcionario.pix': 'Chave PIX',
-  'funcionario.pis': 'PIS/PASEP',
-  'funcionario.ctps': 'CTPS',
-  'funcionario.ctps_serie': 'Série da CTPS',
-  'funcionario.ctps_estado': 'Estado da CTPS',
-  'funcionario.orgao_emissor': 'Órgão emissor do RG',
-  'funcionario.rg_estado': 'UF do RG',
-  'funcionario.raca': 'Raça/Cor',
-  'funcionario.grau_instrucao': 'Grau de instrução',
-  'funcionario.tipo_sanguineo': 'Tipo sanguíneo',
-  'funcionario.filhos': 'Filhos (nome/idade)',
+  'funcionario.banco':              'Nome do banco',
+  'funcionario.agencia':            'Agência bancária',
+  'funcionario.conta':              'Conta bancária',
+  'funcionario.pix':                'Chave PIX',
+  'funcionario.pis':                'PIS/PASEP',
+  'funcionario.ctps':               'CTPS',
+  'funcionario.ctps_serie':         'Série da CTPS',
+  'funcionario.ctps_estado':        'Estado da CTPS',
+  'funcionario.orgao_emissor':      'Órgão emissor do RG',
+  'funcionario.rg_estado':          'UF do RG',
+  'funcionario.raca':               'Raça/Cor',
+  'funcionario.grau_instrucao':     'Grau de instrução',
+  'funcionario.tipo_sanguineo':     'Tipo sanguíneo',
+  'funcionario.filhos':             'Filhos (nome/idade)',
   'funcionario.contato_emergencia': 'Contato de emergência',
-  'funcionario.telefone_emergencia': 'Telefone de emergência',
-  'funcionario.uniforme_camisa': 'Tamanho da camisa',
-  'funcionario.uniforme_camiseta': 'Tamanho da camiseta',
-  'funcionario.uniforme_calca': 'Tamanho da calça',
-  'funcionario.uniforme_jaqueta': 'Tamanho da jaqueta',
-  'funcionario.uniforme_casaco': 'Tamanho do casaco',
-  'funcionario.uniforme_botina': 'Número da botina',
+  'funcionario.telefone_emergencia':'Telefone de emergência',
+  'funcionario.uniforme_camisa':    'Tamanho da camisa',
+  'funcionario.uniforme_camiseta':  'Tamanho da camiseta',
+  'funcionario.uniforme_calca':     'Tamanho da calça',
+  'funcionario.uniforme_jaqueta':   'Tamanho da jaqueta',
+  'funcionario.uniforme_casaco':    'Tamanho do casaco',
+  'funcionario.uniforme_botina':    'Número da botina',
   // Empresa
-  'empresa.nome': 'Nome da empresa',
-  'empresa.nome_fantasia': 'Nome fantasia da empresa',
-  'empresa.cnpj': 'CNPJ da empresa',
-  'empresa.endereco': 'Endereço da empresa',
-  'empresa.cidade': 'Cidade da empresa',
-  'empresa.estado': 'Estado da empresa',
-  'empresa.cep': 'CEP da empresa',
-  'empresa.telefone': 'Telefone da empresa',
-  'empresa.email': 'Email da empresa',
+  'empresa.nome':           'Nome da empresa',
+  'empresa.nome_fantasia':  'Nome fantasia da empresa',
+  'empresa.cnpj':           'CNPJ da empresa',
+  'empresa.endereco':       'Endereço da empresa',
+  'empresa.cidade':         'Cidade da empresa',
+  'empresa.estado':         'Estado da empresa',
+  'empresa.cep':            'CEP da empresa',
+  'empresa.telefone':       'Telefone da empresa',
+  'empresa.email':          'Email da empresa',
   // Data/Hora
-  'data.hoje': 'Data atual (DD/MM/YYYY)',
-  'data.hoje_extenso': 'Data atual por extenso (ex: quarta-feira, 6 de agosto de 2026)',
-  'data.ano': 'Ano atual (ex: 2026)',
-  'data.mes': 'Mês atual em número (ex: 08)',
-  'data.mes.extenso': 'Mês atual por extenso em minúsculas (ex: agosto)',
-  'data.mes.extenso_cap': 'Mês atual por extenso com inicial maiúscula (ex: Agosto)',
-  'data.dia': 'Dia atual em número (ex: 06)',
-  'data.dia.semana': 'Dia da semana por extenso (ex: quarta-feira)',
+  'data.hoje':              'Data atual (DD/MM/YYYY)',
+  'data.hoje_extenso':      'Data atual por extenso (ex: quinta-feira, 6 de agosto de 2026)',
+  'data.ano':               'Ano atual (ex: 2026)',
+  'data.mes':               'Mês atual em número (ex: 08)',
+  'data.mes.extenso':       'Mês atual por extenso em minúsculas (ex: agosto)',
+  'data.mes.extenso_cap':   'Mês atual por extenso com inicial maiúscula (ex: Agosto)',
+  'data.dia':               'Dia atual em número (ex: 06)',
+  'data.dia.semana':        'Dia da semana por extenso (ex: quinta-feira)',
 };
 
 @Injectable()
@@ -141,10 +152,7 @@ export class TemplateEngineService {
     }));
   }
 
-  async renderDocx(
-    templateBuffer: Buffer,
-    variables: Record<string, string>,
-  ): Promise<Buffer> {
+  async renderDocx(templateBuffer: Buffer, variables: Record<string, string>): Promise<Buffer> {
     const zip = new PizZip(templateBuffer);
     const flatVars = this.flattenVariables(variables);
 
@@ -175,36 +183,25 @@ export class TemplateEngineService {
 
   computeCalculatedVariables(baseVars: Record<string, string>): Record<string, string> {
     const calculated: Record<string, string> = {};
-
     const admissao = baseVars['funcionario.data_admissao'];
     if (admissao) {
       try {
         const parts = admissao.split('/');
-        const admDate = new Date(
-          parseInt(parts[2]),
-          parseInt(parts[1]) - 1,
-          parseInt(parts[0]),
-        );
+        const admDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
         calculated['funcionario.fim_experiencia'] = format(addDays(admDate, 90), 'dd/MM/yyyy');
         calculated['funcionario.fim_experiencia_prorrogada'] = format(addDays(admDate, 180), 'dd/MM/yyyy');
         calculated['funcionario.anos_empresa'] = differenceInYears(new Date(), admDate).toString();
         calculated['funcionario.tempo_empresa'] = formatDistanceToNow(admDate, { locale: ptBR, addSuffix: false });
-      } catch {
-        // skip
-      }
+      } catch { /* skip */ }
     }
-
     const dataNasc = baseVars['funcionario.data_nascimento'];
     if (dataNasc) {
       try {
         const parts = dataNasc.split('/');
         const birthDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
         calculated['funcionario.idade'] = differenceInYears(new Date(), birthDate).toString();
-      } catch {
-        // skip
-      }
+      } catch { /* skip */ }
     }
-
     return calculated;
   }
 
@@ -223,16 +220,10 @@ export class TemplateEngineService {
     return [...static_, ...customVars];
   }
 
-  validateVariables(
-    variables: VariableInfo[],
-    customVarPaths: string[] = [],
-  ): { valid: VariableInfo[]; invalid: VariableInfo[] } {
+  validateVariables(variables: VariableInfo[], customVarPaths: string[] = []) {
     const allValid = new Set([...Object.keys(KNOWN_VARIABLES), ...customVarPaths]);
     const resolved = variables.map((v) => ({ ...v, isValid: allValid.has(v.path) }));
-    return {
-      valid: resolved.filter((v) => v.isValid),
-      invalid: resolved.filter((v) => !v.isValid),
-    };
+    return { valid: resolved.filter((v) => v.isValid), invalid: resolved.filter((v) => !v.isValid) };
   }
 
   private flattenVariables(obj: Record<string, any>, prefix = ''): Record<string, string> {
