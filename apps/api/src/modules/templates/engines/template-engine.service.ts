@@ -18,7 +18,6 @@ export interface RenderResult {
   usedVariables: string[];
 }
 
-// Registry of all known static variables
 export const KNOWN_VARIABLES: Record<string, string> = {
   // Funcionário - Pessoal
   'funcionario.nome': 'Nome completo do funcionário',
@@ -88,19 +87,19 @@ export const KNOWN_VARIABLES: Record<string, string> = {
   'empresa.email': 'Email da empresa',
   // Data/Hora
   'data.hoje': 'Data atual (DD/MM/YYYY)',
-  'data.hoje_extenso': 'Data atual por extenso',
-  'data.ano': 'Ano atual',
-  'data.mes': 'Mês atual',
-  'data.dia': 'Dia atual',
+  'data.hoje_extenso': 'Data atual por extenso (ex: quarta-feira, 6 de agosto de 2026)',
+  'data.ano': 'Ano atual (ex: 2026)',
+  'data.mes': 'Mês atual em número (ex: 08)',
+  'data.mes.extenso': 'Mês atual por extenso em minúsculas (ex: agosto)',
+  'data.mes.extenso_cap': 'Mês atual por extenso com inicial maiúscula (ex: Agosto)',
+  'data.dia': 'Dia atual em número (ex: 06)',
+  'data.dia.semana': 'Dia da semana por extenso (ex: quarta-feira)',
 };
 
 @Injectable()
 export class TemplateEngineService {
   private readonly logger = new Logger(TemplateEngineService.name);
 
-  /**
-   * Extract all {{variable}} placeholders from DOCX buffer
-   */
   async extractVariablesFromDocx(buffer: Buffer): Promise<VariableInfo[]> {
     const zip = new PizZip(buffer);
     const doc = new Docxtemplater(zip, {
@@ -131,13 +130,9 @@ export class TemplateEngineService {
     }));
   }
 
-  /**
-   * Extract all {{variable}} placeholders from HTML content
-   */
   extractVariablesFromHtml(html: string): VariableInfo[] {
     const matches = html.match(/\{\{([^}]+)\}\}/g) || [];
     const tags = [...new Set(matches.map((m) => m.replace(/\{\{|\}\}/g, '').trim()))];
-
     return tags.map((tag) => ({
       name: `{{${tag}}}`,
       path: tag,
@@ -146,16 +141,11 @@ export class TemplateEngineService {
     }));
   }
 
-  /**
-   * Render DOCX template with variable substitution
-   */
   async renderDocx(
     templateBuffer: Buffer,
     variables: Record<string, string>,
   ): Promise<Buffer> {
     const zip = new PizZip(templateBuffer);
-
-    // Flatten nested variable object into dot notation keys
     const flatVars = this.flattenVariables(variables);
 
     const doc = new Docxtemplater(zip, {
@@ -169,98 +159,59 @@ export class TemplateEngineService {
     });
 
     doc.render(flatVars);
-
     return doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
   }
 
-  /**
-   * Render HTML template with Handlebars
-   */
   renderHtml(htmlTemplate: string, variables: Record<string, string>): string {
-    // Register date helpers
     Handlebars.registerHelper('now', () => new Date().toLocaleDateString('pt-BR'));
     Handlebars.registerHelper('formatDate', (date: string) =>
       date ? new Date(date).toLocaleDateString('pt-BR') : '',
     );
-
     const compiled = Handlebars.compile(htmlTemplate, { noEscape: true });
     const flatVars = this.flattenVariables(variables);
-
-    // Build nested object for Handlebars
     const context = this.buildNestedObject(flatVars);
     return compiled(context);
   }
 
-  /**
-   * Compute calculated variables from base employee variables
-   * These are derived at render time — not stored in DB
-   */
   computeCalculatedVariables(baseVars: Record<string, string>): Record<string, string> {
     const calculated: Record<string, string> = {};
 
-    // Fim do período de experiência (admissão + 90 dias)
     const admissao = baseVars['funcionario.data_admissao'];
     if (admissao) {
       try {
-        // Parse Brazilian date format dd/mm/yyyy
         const parts = admissao.split('/');
         const admDate = new Date(
           parseInt(parts[2]),
           parseInt(parts[1]) - 1,
           parseInt(parts[0]),
         );
-
-        calculated['funcionario.fim_experiencia'] = format(
-          addDays(admDate, 90),
-          'dd/MM/yyyy',
-        );
-        calculated['funcionario.fim_experiencia_prorrogada'] = format(
-          addDays(admDate, 180),
-          'dd/MM/yyyy',
-        );
-        calculated['funcionario.anos_empresa'] = differenceInYears(
-          new Date(),
-          admDate,
-        ).toString();
-        calculated['funcionario.tempo_empresa'] = formatDistanceToNow(admDate, {
-          locale: ptBR,
-          addSuffix: false,
-        });
+        calculated['funcionario.fim_experiencia'] = format(addDays(admDate, 90), 'dd/MM/yyyy');
+        calculated['funcionario.fim_experiencia_prorrogada'] = format(addDays(admDate, 180), 'dd/MM/yyyy');
+        calculated['funcionario.anos_empresa'] = differenceInYears(new Date(), admDate).toString();
+        calculated['funcionario.tempo_empresa'] = formatDistanceToNow(admDate, { locale: ptBR, addSuffix: false });
       } catch {
-        // Silently skip if date parsing fails
+        // skip
       }
     }
 
-    // Idade calculada
     const dataNasc = baseVars['funcionario.data_nascimento'];
     if (dataNasc) {
       try {
         const parts = dataNasc.split('/');
-        const birthDate = new Date(
-          parseInt(parts[2]),
-          parseInt(parts[1]) - 1,
-          parseInt(parts[0]),
-        );
+        const birthDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
         calculated['funcionario.idade'] = differenceInYears(new Date(), birthDate).toString();
       } catch {
-        // Silently skip
+        // skip
       }
     }
 
     return calculated;
   }
 
-  /**
-   * Validate a variable path and add custom fields to registry dynamically
-   */
   isValidVariable(path: string, customVarPaths: string[] = []): boolean {
     return path in KNOWN_VARIABLES || customVarPaths.includes(path);
   }
 
-  /**
-   * Get all available variables with descriptions
-   * Accepts additional custom variables to merge into result
-   */
   getAvailableVariables(customVars: VariableInfo[] = []): VariableInfo[] {
     const static_ = Object.entries(KNOWN_VARIABLES).map(([path, description]) => ({
       name: `{{${path}}}`,
@@ -272,33 +223,19 @@ export class TemplateEngineService {
     return [...static_, ...customVars];
   }
 
-  /**
-   * Validate variables in a template against known + custom registries
-   */
   validateVariables(
     variables: VariableInfo[],
     customVarPaths: string[] = [],
   ): { valid: VariableInfo[]; invalid: VariableInfo[] } {
-    const allValid = new Set([
-      ...Object.keys(KNOWN_VARIABLES),
-      ...customVarPaths,
-    ]);
-
-    const resolved = variables.map((v) => ({
-      ...v,
-      isValid: allValid.has(v.path),
-    }));
-
+    const allValid = new Set([...Object.keys(KNOWN_VARIABLES), ...customVarPaths]);
+    const resolved = variables.map((v) => ({ ...v, isValid: allValid.has(v.path) }));
     return {
       valid: resolved.filter((v) => v.isValid),
       invalid: resolved.filter((v) => !v.isValid),
     };
   }
 
-  private flattenVariables(
-    obj: Record<string, any>,
-    prefix = '',
-  ): Record<string, string> {
+  private flattenVariables(obj: Record<string, any>, prefix = ''): Record<string, string> {
     const result: Record<string, string> = {};
     for (const [key, value] of Object.entries(obj)) {
       const fullKey = prefix ? `${prefix}.${key}` : key;

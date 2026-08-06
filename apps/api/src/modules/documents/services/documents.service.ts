@@ -24,7 +24,6 @@ export interface GenerateDocumentDto {
   dossierFolderId?: string;
   additionalVariables?: Record<string, string>;
   notes?: string;
-  /** If true, skips compliance blocking (ADMIN override) */
   forceGenerate?: boolean;
 }
 
@@ -44,6 +43,16 @@ export interface PreviewResult {
   };
 }
 
+const MONTHS_PT = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
+
+const DAYS_PT = [
+  'domingo', 'segunda-feira', 'terça-feira', 'quarta-feira',
+  'quinta-feira', 'sexta-feira', 'sábado',
+];
+
 @Injectable()
 export class DocumentsService {
   private readonly logger = new Logger(DocumentsService.name);
@@ -58,10 +67,6 @@ export class DocumentsService {
     private readonly customFields: CustomFieldsService,
     @InjectQueue('pdf-generation') private readonly pdfQueue: Queue,
   ) {}
-
-  // ============================================================
-  // BUILD ALL VARIABLES (employee + company + date + custom + calculated)
-  // ============================================================
 
   private async buildVariables(
     employeeId: string,
@@ -88,14 +93,21 @@ export class DocumentsService {
       : {};
 
     const now = new Date();
+    const mesNumero = now.getMonth() + 1;
+    const mesExtenso = MONTHS_PT[now.getMonth()];
+    const diaExtenso = DAYS_PT[now.getDay()];
+
     const dateVars: Record<string, string> = {
       'data.hoje': now.toLocaleDateString('pt-BR'),
       'data.hoje_extenso': now.toLocaleDateString('pt-BR', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       }),
       'data.ano': now.getFullYear().toString(),
-      'data.mes': (now.getMonth() + 1).toString().padStart(2, '0'),
+      'data.mes': mesNumero.toString().padStart(2, '0'),
+      'data.mes.extenso': mesExtenso,
+      'data.mes.extenso_cap': mesExtenso.charAt(0).toUpperCase() + mesExtenso.slice(1),
       'data.dia': now.getDate().toString().padStart(2, '0'),
+      'data.dia.semana': diaExtenso,
     };
 
     const baseVars = { ...employeeVars, ...companyVars, ...dateVars, ...customVars, ...(additionalVariables || {}) };
@@ -103,10 +115,6 @@ export class DocumentsService {
 
     return { ...baseVars, ...calculatedVars };
   }
-
-  // ============================================================
-  // PREVIEW (no persistence, compliance check included)
-  // ============================================================
 
   async preview(dto: PreviewDocumentDto, userId: string): Promise<PreviewResult> {
     const template = await this.prisma.template.findUnique({
@@ -121,7 +129,6 @@ export class DocumentsService {
     ]);
 
     let html: string;
-
     if (template.format === TemplateFormat.HTML) {
       html = this.engine.renderHtml(template.htmlContent!, allVariables);
     } else {
@@ -148,17 +155,11 @@ export class DocumentsService {
     };
   }
 
-  // ============================================================
-  // GENERATE
-  // ============================================================
-
   async generate(dto: GenerateDocumentDto, userId: string) {
     try {
       return await this._generate(dto, userId);
     } catch (err: any) {
-      // Re-throw known HTTP exceptions as-is
       if (err?.status && err.status < 500) throw err;
-      // For unexpected errors, log and expose the real message so the front-end can show it
       this.logger.error('generate failed', err?.stack || err);
       throw new InternalServerErrorException(
         `Erro ao gerar documento: ${err?.message ?? 'erro desconhecido'}`,
@@ -173,7 +174,6 @@ export class DocumentsService {
     });
     if (!template) throw new NotFoundException('Template não encontrado');
 
-    // Compliance check BEFORE generating
     const complianceCheck = await this.compliance.checkCompliance(
       dto.templateId,
       dto.employeeId,
@@ -188,7 +188,6 @@ export class DocumentsService {
 
     const allVariables = await this.buildVariables(dto.employeeId, dto.additionalVariables);
 
-    // Build employee snapshot — null-safe (position/department may not be set)
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: {
@@ -209,7 +208,6 @@ export class DocumentsService {
       snapshotAt: new Date().toISOString(),
     };
 
-    // Generate document buffer
     let generatedBuffer: Buffer;
     let mimeType: string;
     let extension: string;
@@ -234,7 +232,6 @@ export class DocumentsService {
 
     const docName = dto.name || `${template.name} - ${employee.fullName} - ${new Date().toLocaleDateString('pt-BR')}`;
 
-    // Upload generated document to MinIO
     const uploadResult = await this.minio.uploadFile(
       this.minio.getBucketName('documents'),
       generatedBuffer,
@@ -255,13 +252,11 @@ export class DocumentsService {
       },
     });
 
-    // Pin to current template version
     const currentVersion = await this.prisma.templateVersion.findFirst({
       where: { templateId: dto.templateId },
       orderBy: { version: 'desc' },
     });
 
-    // Auto-resolve dossier folder: use provided or find "Contratos" system folder
     let resolvedDossierFolderId: string | undefined = dto.dossierFolderId;
     if (!resolvedDossierFolderId) {
       try {
@@ -270,7 +265,7 @@ export class DocumentsService {
         });
         resolvedDossierFolderId = contratosFolder?.id;
       } catch {
-        // dossierFolder table may not exist yet — skip auto-archive
+        // dossierFolder table may not exist yet
       }
     }
 
@@ -294,13 +289,11 @@ export class DocumentsService {
       },
     });
 
-    // Update template usage count
     await this.prisma.template.update({
       where: { id: dto.templateId },
       data: { usageCount: { increment: 1 } },
     });
 
-    // Queue PDF generation — non-blocking so a Redis issue doesn't fail the generation
     try {
       await this.pdfQueue.add('generate-pdf', {
         documentId: document.id,
@@ -309,7 +302,7 @@ export class DocumentsService {
         userId,
       });
     } catch (err) {
-      this.logger.warn(`PDF queue unavailable — document generated but PDF not queued: ${(err as Error).message}`);
+      this.logger.warn(`PDF queue unavailable: ${(err as Error).message}`);
     }
 
     await this.audit.log({
@@ -326,15 +319,8 @@ export class DocumentsService {
       },
     });
 
-    return {
-      ...document,
-      compliance: complianceCheck,
-    };
+    return { ...document, compliance: complianceCheck };
   }
-
-  // ============================================================
-  // FIND ALL / ONE / DOWNLOAD / SAVE TO DOSSIER
-  // ============================================================
 
   async findAll(filter: {
     employeeId?: string;
@@ -347,7 +333,6 @@ export class DocumentsService {
     const page = Math.max(1, Number(filter.page) || 1);
     const limit = Math.min(500, Math.max(1, Number(filter.limit) || 20));
     const where: any = {};
-
     if (employeeId) where.employeeId = employeeId;
     if (templateId) where.templateId = templateId;
     if (status) where.status = status;
@@ -368,10 +353,7 @@ export class DocumentsService {
       }),
     ]);
 
-    return {
-      data: documents,
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    };
+    return { data: documents, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
   async findOne(id: string) {
@@ -393,12 +375,10 @@ export class DocumentsService {
   async downloadDocument(id: string, format: 'source' | 'pdf' = 'pdf') {
     const doc = await this.findOne(id);
     const storage = format === 'pdf' ? doc.pdfStorage : doc.fileStorage;
-
     if (!storage) {
       if (format === 'pdf') throw new BadRequestException('PDF ainda não gerado');
       throw new NotFoundException('Arquivo não encontrado');
     }
-
     const buffer = await this.minio.getObject(storage.bucket, storage.key);
     return { buffer, mimeType: storage.mimeType, filename: storage.originalName };
   }
@@ -410,10 +390,6 @@ export class DocumentsService {
       data: { dossierFolderId },
     });
   }
-
-  // ============================================================
-  // DOCX PREVIEW HTML
-  // ============================================================
 
   private buildDocxPreviewHtml(
     variables: Record<string, string>,
@@ -442,7 +418,7 @@ export class DocumentsService {
 </style></head>
 <body>
   <h2>Preview de Variáveis — Template DOCX</h2>
-  <p style="color:#6b7280">O documento DOCX será gerado com as substituições abaixo. Confirme os valores antes de gerar.</p>
+  <p style="color:#6b7280">O documento DOCX será gerado com as substituições abaixo.</p>
   <table>
     <thead><tr><th>Variável</th><th>Valor</th><th>Status</th></tr></thead>
     <tbody>${rows}</tbody>
