@@ -322,6 +322,47 @@ export class DocumentsService {
     return { ...document, compliance: complianceCheck };
   }
 
+  async generateBatch(
+    dto: {
+      templateId: string;
+      employeeIds: string[];
+      dossierFolderId?: string;
+      additionalVariables?: Record<string, string>;
+      notes?: string;
+      forceGenerate?: boolean;
+    },
+    userId: string,
+  ) {
+    const results: Array<{ employeeId: string; success: boolean; documentId?: string; error?: string }> = [];
+
+    for (const employeeId of dto.employeeIds) {
+      try {
+        const doc = await this._generate(
+          {
+            templateId: dto.templateId,
+            employeeId,
+            dossierFolderId: dto.dossierFolderId,
+            additionalVariables: dto.additionalVariables,
+            notes: dto.notes,
+            forceGenerate: dto.forceGenerate,
+          },
+          userId,
+        );
+        results.push({ employeeId, success: true, documentId: doc.id });
+      } catch (err: any) {
+        this.logger.warn(`generateBatch: falha para funcionário ${employeeId}: ${err?.message}`);
+        results.push({ employeeId, success: false, error: err?.message ?? 'erro desconhecido' });
+      }
+    }
+
+    return {
+      total: results.length,
+      succeeded: results.filter((r) => r.success).length,
+      failed: results.filter((r) => !r.success).length,
+      results,
+    };
+  }
+
   async findAll(filter: {
     employeeId?: string;
     templateId?: string;

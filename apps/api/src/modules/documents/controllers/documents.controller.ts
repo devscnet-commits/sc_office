@@ -37,6 +37,26 @@ export class DocumentsController {
     return this.service.generate(dto, userId);
   }
 
+  @Post('generate-batch')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Gerar documento em lote para vários funcionários (ex: por departamento)',
+    description: 'Executa a mesma geração para cada funcionário da lista. Falhas individuais não interrompem o lote.',
+  })
+  generateBatch(
+    @Body() dto: {
+      templateId: string;
+      employeeIds: string[];
+      dossierFolderId?: string;
+      additionalVariables?: Record<string, string>;
+      notes?: string;
+      forceGenerate?: boolean;
+    },
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.service.generateBatch(dto, userId);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Listar documentos gerados' })
   findAll(
